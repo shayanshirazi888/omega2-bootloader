@@ -3027,7 +3027,16 @@ void gpio_init(void)
 
 	RALINK_REG(RT2880_REG_PIODIR+0x04)=val;
 
+	// Set SD_MODE to GPIO mode (enables GPIO 18 to 29, which includes GPIO 25)
+    val = RALINK_REG(RT2880_SYS_CNTL_BASE+0x60);
+    val &= ~(3<<10); // Clear bits 11:10
+    val |= (1<<10);  // Set bits 11:10 to 01 (GPIO mode)
+    RALINK_REG(RT2880_SYS_CNTL_BASE+0x60) = val;
 
+    // Set GPIO 25 direction as INPUT
+    val = RALINK_REG(RT2880_REG_PIODIR);
+    val &= ~(1<<25); // Clear bit 25 (Set as Input)
+    RALINK_REG(RT2880_REG_PIODIR) = val;
   //zh@onion.io
   //setting GPIO 11 High, required for the reset button to work
   val=RALINK_REG(RT2880_REG_PIODIR);
@@ -3060,9 +3069,9 @@ void led_off( void )
 int detect_rst( void )
 {
 	u32 val;
-	val=RALINK_REG(0xb0000624);// Read GPIO 44 (reset button)
+	val = RALINK_REG(0xb0000620); // Read GPIO 0 to 31 (since GPIO 25 is in the first register)
 
-    if(val&1<<6)
+    if ( ! (val & (1 << 25)) ) // Active-low logic: returns 1 if GPIO 25 is pressed (GND)
     {
     	return 1;
     }
@@ -3070,7 +3079,6 @@ int detect_rst( void )
     {
         return 0;
     }
-
 }
 
 void set_gpio_led(int vreg,int vgpio)  //jeff add for gpio test at 20190125
