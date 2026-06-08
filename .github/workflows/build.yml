@@ -1,0 +1,38 @@
+name: Build Onion Omega2+ Bootloader
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install 32-bit libraries (Required for MTK toolchain)
+      run: |
+        sudo dpkg --add-architecture i386
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses5-dev bc gcc-multilib libc6:i386 libstdc++6:i386 libbz2-1.0:i386
+
+    - name: Run setup script
+      run: |
+        chmod +x setup_env.sh
+        sudo ./setup_env.sh
+
+    - name: Run compile script
+      run: |
+        chmod +x build.sh
+        ./build.sh
+
+    - name: Save Bootloader Binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: omega2-bootloader-binaries
+        path: uboot-*.bin
