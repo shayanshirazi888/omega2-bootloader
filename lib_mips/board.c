@@ -130,8 +130,11 @@ void gpio_init(void);
 void led_on(void);
 void led_off(void);
 
-// Added by zh@onion.io
-int detect_rst(void); // rename wps button to rst
+// PGP Custom Functions
+int detect_rst(void); // Check Reset Button (GPIO 25)
+int detect_wifi_btn(void); // Check WIFI Button (GPIO 27)
+void write_leds_595(u8 led_data); // Shift Register LED Control
+
 void gpio_test(int vtest);
 void write_macAddress(void); // Added by jeffzhou@onion.io
 void set_gpio_led(int vreg,int vgpio) ;//jeff
@@ -2025,421 +2028,111 @@ void board_init_r (gd_t *id, ulong dest_addr)
 /*failsafe end!*/
 // #endif
 
-    // zh@onion.io
-    // enter boot menu only when reset button is pressed
-    if (detect_rst())
+    // [NEW FEATURE: DUAL BUTTONS AND SINGLE BUTTON EMERGENCY RECOVERY AND WIPE SYSTEM]
+    
+    // 1. Check double button press (Reset + WIFI) for 10 seconds to enter Web Recovery directly
+    if (detect_rst() && detect_wifi_btn())
     {
-
-        printf("You have %d seconds left to select a menu option...\n\n", timer1 * 8);
-
-        OperationSelect();
-
-        //default
-        BootType = 'b';
-
-        // zh@onion.io
-        // wait for user input
-        while (timer1 > 0)
-        {
-            --timer1;
-            /* delay 100 * 10ms */
-            for (i = 0; i < 100; ++i)
-            {
-
-                led_on();
-
-                if ((my_tmp = tstc()) != 0)
-                {    /* we got a key press	*/
-                    timer1 = 0;    /* no more delay	*/
-                    BootType = getc();
-
-                    printf("\n\rOption [%c] selected.\n", BootType);
-                    break;
-                }
-
-                udelay(30000);
-                led_off();
-                udelay(30000);
-
+        int hold_seconds = 0;
+        int ms = 0;
+        printf("\n[PGP] BOTH buttons (Reset + Wifi) detected! Checking 10s hold...\n");
+        
+        for (hold_seconds = 1; hold_seconds <= 10; hold_seconds++) {
+            // Delay 1 second (100 * 10ms)
+            for (ms = 0; ms < 100; ms++) {
+                udelay(10000); // 10ms delay
+            }
+            
+            // Check if BOTH are STILL pressed
+            if (detect_rst() && detect_wifi_btn()) {
+                // Running light (sequential): 1st, 2nd, 3rd, 4th, 5th, then repeat
+                u8 led_mask = 1 << ((hold_seconds - 1) % 5);
+                write_leds_595(led_mask);
+                printf("Holding both buttons... %d seconds\n", hold_seconds);
+            } else {
+                break; // One of the buttons was released early
             }
         }
-
-        char *argv[5];
-        int argc = 3;
-
-        switch (BootType)
-        {
-            // zh@onion.io
-            // added ethernet bootsafe as option 0
-// #ifdef ONION_WEB_FLASH // failsafe
-            case '0':
-                eth_initialize(gd->bd);
-                NetLoopHttpd();
-                break;
-// #endif //ONION_WEB_FLASH
-
-
-            // zh@onion.io
-            // enable gpio test option
-            case 't':
-                gpio_test(0);
-                break;
-
-            // enable Omega2s gpio test option
-            case 's':
-                gpio_test(1);
-                break;
-
-            // enable Omega2 write mac address option
-            case 'm':
-                write_macAddress();
-                break;
-
-#ifdef ONION_TFTP_FLASH_SDRAM
-            case '3':
-                printf("   \n%d: System Load Linux to SDRAM via TFTP. \n", SEL_LOAD_LINUX_SDRAM);
-                tftp_config(SEL_LOAD_LINUX_SDRAM, argv);
-                argc = 3;
-                setenv("autostart", "yes");
-                do_tftpb(cmdtp, 0, argc, argv);
-                break;
-#endif //ONION_TFTP_FLASH_SDRAM
-
-#ifdef ONION_TFTP_FLASH
-            case '5':
-                printf("   \n%d: System Load Linux Kernel then write to Flash via TFTP. \n",
-                       SEL_LOAD_LINUX_WRITE_FLASH);
-                printf(" Warning!! Erase Linux in Flash then burn new one. Are you sure?(Y/N)\n");
-                confirm = getc();
-                if (confirm != 'y' && confirm != 'Y')
-                {
-                    printf(" Operation terminated\n");
-                    break;
-                }
-                tftp_config(SEL_LOAD_LINUX_WRITE_FLASH, argv);
-                argc = 3;
-                setenv("autostart", "no");
-                do_tftpb(cmdtp, 0, argc, argv);
-
-#if defined (CFG_ENV_IS_IN_NAND)
-            if (1) {
-                unsigned int load_address = simple_strtoul(argv[1], NULL, 16);
-                ranand_erase_write((u8 *)load_address, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
-            }
-#elif defined (CFG_ENV_IS_IN_SPI)
-            if (1) {
-                unsigned int load_address = simple_strtoul(argv[1], NULL, 16);
-                raspi_erase_write((u8 *)load_address, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
-            }
-#else //CFG_ENV_IS_IN_FLASH
-#if (defined (ON_BOARD_8M_FLASH_COMPONENT) || defined (ON_BOARD_16M_FLASH_COMPONENT)) && (defined (RT2880_ASIC_BOARD) || defined (RT2880_FPGA_BOARD) || defined (RT3052_MP1))
-            //erase linux
-            if (NetBootFileXferSize <= (0x400000 - (CFG_BOOTLOADER_SIZE + CFG_CONFIG_SIZE + CFG_FACTORY_SIZE))) {
-                e_end = CFG_KERN_ADDR + NetBootFileXferSize;
-                if (0 != get_addr_boundary(&e_end))
-                    break;
-                printf("Erase linux kernel block !!\n");
-                printf("From 0x%X To 0x%X\n", CFG_KERN_ADDR, e_end);
-                flash_sect_erase(CFG_KERN_ADDR, e_end);
-            }
-            else if (NetBootFileXferSize <= CFG_KERN_SIZE) {
-                e_end = PHYS_FLASH_2 + NetBootFileXferSize - (0x400000 - (CFG_BOOTLOADER_SIZE + CFG_CONFIG_SIZE + CFG_FACTORY_SIZE));
-                if (0 != get_addr_boundary(&e_end))
-                    break;
-                printf("Erase linux kernel block !!\n");
-                printf("From 0x%X To 0x%X\n", CFG_KERN_ADDR, CFG_FLASH_BASE+0x3FFFFF);
-                flash_sect_erase(CFG_KERN_ADDR, CFG_FLASH_BASE+0x3FFFFF);
-                printf("Erase linux file system block !!\n");
-                printf("From 0x%X To 0x%X\n", PHYS_FLASH_2, e_end);
-                flash_sect_erase(PHYS_FLASH_2, e_end);
-            }
-#else
-                if (NetBootFileXferSize <=
-                    (bd->bi_flashsize - (CFG_BOOTLOADER_SIZE + CFG_CONFIG_SIZE + CFG_FACTORY_SIZE)))
-                {
-                    e_end = CFG_KERN_ADDR + NetBootFileXferSize;
-                    if (0 != get_addr_boundary(&e_end))
-                        break;
-                    printf("Erase linux kernel block !!\n");
-                    printf("From 0x%X To 0x%X\n", CFG_KERN_ADDR, e_end);
-                    flash_sect_erase(CFG_KERN_ADDR, e_end);
-                }
-#endif
-                else
-                {
-                    printf("***********************************\n");
-                    printf("The Linux Image size is too big !! \n");
-                    printf("***********************************\n");
-                    break;
-                }
-
-                //cp.linux
-                argc = 4;
-                argv[0] = "cp.linux";
-                do_mem_cp(cmdtp, 0, argc, argv);
-#endif //CFG_ENV_IS_IN_FLASH
-
-#ifdef DUAL_IMAGE_SUPPORT
-            /* Don't do anything to the firmware upgraded in Uboot, since it may be used for testing */
-            setenv("Image1Stable", "1");
-            saveenv();
-#endif
-
-                //bootm bc050000
-                argc = 2;
-                sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
-                argv[1] = &addr_str[0];
-                do_bootm(cmdtp, 0, argc, argv);
-                break;
-
-#endif //ONION_TFTP_FLASH
-
-
-
-#ifdef RALINK_CMDLINE
-            case '1':
-                printf("   \n%d: System Enter Boot Command Line Interface.\n", SEL_ENTER_CLI);
-                printf ("\n%s\n", version_string);
-                /* main_loop() can return to retry autoboot, if so just run it again. */
-                for (;;) {
-                    main_loop ();
-                }
-                break;
-
-#endif // RALINK_CMDLINE //
-
-
-#ifdef RALINK_UPGRADE_BY_SERIAL
-            case '8':
-                printf("\n%d: System Load Boot Loader then write to Flash via Serial. \n", SEL_LOAD_BOOT_WRITE_FLASH_BY_SERIAL);
-                argc= 1;
-                setenv("autostart", "no");
-                my_tmp = do_load_serial_bin(cmdtp, 0, argc, argv);
-                NetBootFileXferSize=simple_strtoul(getenv("filesize"), NULL, 16);
-#if defined(SMALL_UBOOT_PARTITION)
-                if (NetBootFileXferSize > CFG_UBOOT_SIZE || my_tmp == 1) {
-                    printf("Abort: Bootloader is too big or download aborted!\n");
-                }
-#else
-                if (NetBootFileXferSize > CFG_BOOTLOADER_SIZE || my_tmp == 1) {
-                    printf("Abort: Bootloader is too big or download aborted!\n");
-                }
-#endif
-#if defined (CFG_ENV_IS_IN_NAND)
-                else {
-                    ranand_erase_write((char *)CFG_LOAD_ADDR, 0, NetBootFileXferSize);
-                }
-#elif defined (CFG_ENV_IS_IN_SPI)
-                else {
-                    raspi_erase_write((char *)CFG_LOAD_ADDR, 0, NetBootFileXferSize);
-                }
-#else //CFG_ENV_IS_IN_FLASH
-                else {
-                    //protect off uboot
-                    flash_sect_protect(0, CFG_FLASH_BASE, CFG_FLASH_BASE+CFG_BOOTLOADER_SIZE-1);
-
-                    //erase uboot
-                    printf("\n Erase U-Boot block !!\n");
-                    printf("From 0x%X To 0x%X\n", CFG_FLASH_BASE, CFG_FLASH_BASE+CFG_BOOTLOADER_SIZE-1);
-                    flash_sect_erase(CFG_FLASH_BASE, CFG_FLASH_BASE+CFG_BOOTLOADER_SIZE-1);
-
-                    //cp.uboot
-                    argc = 4;
-                    argv[0]= "cp.uboot";
-                    do_mem_cp(cmdtp, 0, argc, argv);
-
-                    //protect on uboot
-                    flash_sect_protect(1, CFG_FLASH_BASE, CFG_FLASH_BASE+CFG_BOOTLOADER_SIZE-1);
-                }
-#endif //CFG_ENV_IS_IN_FLASH
-
-                //reset
-                do_reset(cmdtp, 0, argc, argv);
-                break;
-#endif // RALINK_UPGRADE_BY_SERIAL //
-
-
-#ifdef ONION_TFTP_FLASH_SDRAM
-            case '7':
-                printf("   \n%d: System Load UBoot to SDRAM via TFTP. \n", SEL_LOAD_BOOT_SDRAM);
-                tftp_config(SEL_LOAD_BOOT_SDRAM, argv);
-                argc = 3;
-                setenv("autostart", "yes");
-                do_tftpb(cmdtp, 0, argc, argv);
-                break;
-#endif //ONION_TFTP_FLASH_SDRAM
-
-#ifdef ONION_TFTP_FLASH
-            case 'SEL_LOAD_BOOT_WRITE_FLASH':
-                printf("   \n%d: System Load Boot Loader then write to Flash via TFTP. \n",
-                       SEL_LOAD_BOOT_WRITE_FLASH);
-                printf(" Warning!! Erase Boot Loader in Flash then burn new one. Are you sure?(Y/N)\n");
-                confirm = getc();
-                if (confirm != 'y' && confirm != 'Y')
-                {
-                    printf(" Operation terminated\n");
-                    break;
-                }
-                tftp_config(SEL_LOAD_BOOT_WRITE_FLASH, argv);
-                argc = 3;
-                setenv("autostart", "no");
-                do_tftpb(cmdtp, 0, argc, argv);
-#if defined(SMALL_UBOOT_PARTITION)
-            if (NetBootFileXferSize > CFG_UBOOT_SIZE) {
-                printf("Abort: bootloader size %d too big! \n", NetBootFileXferSize);
-            }
-#else
-                if (NetBootFileXferSize > CFG_BOOTLOADER_SIZE)
-                {
-                    printf("Abort: bootloader size %d too big! \n", NetBootFileXferSize);
-                }
-#endif
-#if defined (CFG_ENV_IS_IN_NAND)
-                    else {
-                        unsigned int load_address = simple_strtoul(argv[1], NULL, 16);
-                        ranand_erase_write((char *)load_address, 0, NetBootFileXferSize);
-                    }
-#elif defined (CFG_ENV_IS_IN_SPI)
-                    else {
-                        unsigned int load_address = simple_strtoul(argv[1], NULL, 16);
-                        raspi_erase_write((char *)load_address, 0, NetBootFileXferSize);
-                    }
-#else //CFG_ENV_IS_IN_FLASH
-                else
-                {
-                    //protect off uboot
-                    flash_sect_protect(0, CFG_FLASH_BASE, CFG_FLASH_BASE + CFG_BOOTLOADER_SIZE - 1);
-
-                    //erase uboot
-                    printf("\n Erase U-Boot block !!\n");
-                    printf("From 0x%X To 0x%X\n", CFG_FLASH_BASE, CFG_FLASH_BASE + CFG_BOOTLOADER_SIZE - 1);
-                    flash_sect_erase(CFG_FLASH_BASE, CFG_FLASH_BASE + CFG_BOOTLOADER_SIZE - 1);
-
-                    //cp.uboot
-                    argc = 4;
-                    argv[0] = "cp.uboot";
-                    do_mem_cp(cmdtp, 0, argc, argv);
-
-                    //protect on uboot
-                    flash_sect_protect(1, CFG_FLASH_BASE, CFG_FLASH_BASE + CFG_BOOTLOADER_SIZE - 1);
-                }
-#endif //CFG_ENV_IS_IN_FLASH
-
-                //reset
-                do_reset(cmdtp, 0, argc, argv);
-                break;
-#endif //ONION_TFTP_FLASH
-
-
-#ifdef RALINK_UPGRADE_BY_SERIAL
-#if defined (CFG_ENV_IS_IN_NAND) || defined (CFG_ENV_IS_IN_SPI)
-            case 'SEL_LOAD_LINUX_WRITE_FLASH_BY_SERIAL':
-                printf("\n%d: System Load Linux then write to Flash via Serial. \n", SEL_LOAD_LINUX_WRITE_FLASH_BY_SERIAL);
-                argc= 1;
-                setenv("autostart", "no");
-                my_tmp = do_load_serial_bin(cmdtp, 0, argc, argv);
-                NetBootFileXferSize=simple_strtoul(getenv("filesize"), NULL, 16);
-
-#if defined (CFG_ENV_IS_IN_NAND)
-                ranand_erase_write((char *)CFG_LOAD_ADDR, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
-#elif defined (CFG_ENV_IS_IN_SPI)
-                raspi_erase_write((char *)CFG_LOAD_ADDR, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
-#endif //CFG_ENV_IS_IN_FLASH
-
-                //reset
-                do_reset(cmdtp, 0, argc, argv);
-                break;
-#endif
-#endif // RALINK_UPGRADE_BY_SERIAL //
-
-
-#ifdef RALINK_USB
-#if defined (CFG_ENV_IS_IN_NAND) || defined (CFG_ENV_IS_IN_SPI)
-// #if 0
-                        case '2':
-                            printf("System Load Linux then write to Flash via USB Storage. \n");
-                            printf("Looking for a USB Storage. \n");
-                            printf("If suitable image is found on USB Storage writing to Flash will be attempted. \n");
-                            printf("U-Boot will look for a FAT file system. \n");
-                            // printf("U-Boot will look for a file named \"root_uImage\" by convention \n");
-                            //printf("\n%d: for a file named \"lede-ramips-mt7688-Omega2-squashfs-sysupgrade.bin\n", 5);
-
-                            argc = 2;
-                            argv[1] = "start";
-
-                            do_usb(cmdtp, 0, argc, argv);
-
-                            if( usb_stor_curr_dev < 0){
-                                printf("No USB Storage found. No F/W upgrade from USB Storage will be attempted.\n");
-                                break;
-                            }
-
-                            argc= 5;
-                            argv[1] = "usb";
-                            argv[2] = "0";
-
-                            sprintf(addr_str, "0x%X", CFG_LOAD_ADDR);
-
-                            argv[3] = &addr_str[0];
-
-
-                            argv[4] = "omega2.bin";
-                            setenv("autostart", "no");
-
-                            printf("\n");
-                            printf("\n");
-                            printf("***************************************\n");
-                            printf("* [!] This will take several minutes  *\n");
-                            printf("* please do not power off your Omega2 *\n");
-                            printf("***************************************\n");
-                            printf("\n");
-                            printf("\n");
-
-                            if(do_fat_fsload(cmdtp, 0, argc, argv)){
-                                printf("Upgrade F/W from USB storage failed.\n");
-                                break;
-                            }
-
-                            NetBootFileXferSize=simple_strtoul(getenv("filesize"), NULL, 16);
-#if defined (CFG_ENV_IS_IN_NAND)
-                            ranand_erase_write((char *)CFG_LOAD_ADDR, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
-#elif defined (CFG_ENV_IS_IN_SPI)
-                            raspi_erase_write((char *)CFG_LOAD_ADDR, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
-#endif //CFG_ENV_IS_IN_FLASH
-
-                            //reset
-                            do_reset(cmdtp, 0, argc, argv);
-                            break;
-#endif
-#endif // RALINK_UPGRADE_BY_USB //
-
-            default:
-
-                printf("\nBoot Linux from Flash.\n");
-
-                char *argv_normal[2];
-                sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
-                argv_normal[1] = &addr_str[0];
-
-                do_bootm(cmdtp, 0, 2, argv_normal);
-
-                break;
-
-        } /* end of switch */
-
-        do_reset(cmdtp, 0, argc, argv);
-
+        
+        // If they held both for full 10 seconds: Go straight to WEB RECOVERY!
+        if (hold_seconds > 10) {
+            printf("\n============================================\n");
+            printf("  WEB RECOVERY MODE TRIGGERED IMMEDIATELY!  \n");
+            printf("============================================\n");
+            
+            // Turn on all LEDs to show success
+            write_leds_595(0xFF);
+            
+            // Initialize ethernet and jump straight to NetLoopHttpd!
+            eth_initialize(gd->bd);
+            NetLoopHttpd();
+            
+            // Fallback reset if NetLoopHttpd returns
+            do_reset(NULL, 0, 0, NULL);
+        }
+        
+        // If released early, clear LEDs and reboot
+        write_leds_595(0x00);
+        printf("\nButtons released before 10s. Rebooting...\n");
+        do_reset(NULL, 0, 0, NULL);
     }
-    else
+
+    // 2. Check single Reset button press (Reset) for 5 seconds to perform Factory Reset
+    else if (detect_rst())
     {
-        printf("\nBoot Linux from Flash NO RESET PRESSED.\n");
+        int hold_seconds = 0;
+        int ms = 0;
+        int flash = 0;
 
-        char *argv_normal[2];
-        sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
-        argv_normal[1] = &addr_str[0];
-
-        do_bootm(cmdtp, 0, 2, argv_normal);
+        printf("\n[PGP] Reset button detected! Checking hold time...\n");
+        
+        // Progress bar loop: counts up to 5 seconds
+        for (hold_seconds = 1; hold_seconds <= 5; hold_seconds++) {
+            // Delay for 1 second (100 * 10ms)
+            for (ms = 0; ms < 100; ms++) {
+                udelay(10000); // 10ms delay
+            }
+            
+            // Check if the button is STILL pressed
+            if (detect_rst()) {
+                // Show progress bar on LEDs cumulatively (0x01, 0x03, 0x07, 0x0F, 0x1F)
+                u8 led_mask = (1 << hold_seconds) - 1;
+                write_leds_595(led_mask);
+                printf("Holding button... %d seconds\n", hold_seconds);
+            } else {
+                break; // Button was released early!
+            }
+        }
+        
+        // If button was held for the full 5 seconds, trigger factory reset
+        if (hold_seconds > 5) {
+            printf("\n============================================\n");
+            printf("  FACTORY RESET TRIGGERED! Wiping config... \n");
+            printf("============================================\n");
+            
+            // Fast flash all LEDs 5 times to show success
+            for (flash = 0; flash < 5; flash++) {
+                write_leds_595(0xFF); // All LEDs ON
+                udelay(100000);       // 100ms
+                write_leds_595(0x00); // All LEDs OFF
+                udelay(100000);       // 100ms
+            }
+            
+            // Set environment variable for OpenWrt to perform firstboot [14.1.2]
+            setenv("factory_reset", "1");
+            saveenv(); // Save variable to SPI Flash
+            
+            printf("Rebooting device...\n");
+            do_reset(NULL, 0, 0, NULL); // Restart CPU
+        }
+        
+        // If released early (before 5 seconds), reboot immediately
+        write_leds_595(0x00); // Clear LEDs
+        printf("\nButton released before 5 seconds. Rebooting...\n");
+        do_reset(NULL, 0, 0, NULL);
     }
+    // If no buttons are pressed, proceed to normal boot!
+
 	/* NOTREACHED - no way out of command loop except booting */
 }
 
@@ -3024,34 +2717,42 @@ void gpio_init(void)
 	//gpio38 input gpio_ctrl_1 bit5=0
 	val=RALINK_REG(RT2880_REG_PIODIR+0x04);
 	val&=~1<<6;
-
 	RALINK_REG(RT2880_REG_PIODIR+0x04)=val;
 
-	// Set SD_MODE to GPIO mode (enables GPIO 18 to 29, which includes GPIO 25)
+    // Set SD_MODE to GPIO mode (enables GPIO 18 to 29, which includes GPIO 25 and GPIO 27)
     val = RALINK_REG(RT2880_SYS_CNTL_BASE+0x60);
     val &= ~(3<<10); // Clear bits 11:10
     val |= (1<<10);  // Set bits 11:10 to 01 (GPIO mode)
     RALINK_REG(RT2880_SYS_CNTL_BASE+0x60) = val;
 
-    // Set GPIO 25 direction as INPUT
+    // Set GPIO 25 and GPIO 27 direction as INPUT
     val = RALINK_REG(RT2880_REG_PIODIR);
-    val &= ~(1<<25); // Clear bit 25 (Set as Input)
+    val &= ~((1<<25) | (1<<27)); // Clear bit 25 and 27 (Set as Input)
     RALINK_REG(RT2880_REG_PIODIR) = val;
-  //zh@onion.io
-  //setting GPIO 11 High, required for the reset button to work
-  val=RALINK_REG(RT2880_REG_PIODIR);
-  val|=1<<11;
-  RALINK_REG(RT2880_REG_PIODIR) = val; // GPIO 11 direction output
-  val=RALINK_REG(RT2880_REG_PIODATA);
-  val|=1<<11;
-  RALINK_REG(RT2880_REG_PIODATA) = val; // GPIO 11 High
 
-  //jeffzhou@onion.io
-  //adding for read wifi MAC address.
-  unsigned char macbuf[6];
+    //zh@onion.io
+    //setting GPIO 11 High, required for the reset button to work
+    val=RALINK_REG(RT2880_REG_PIODIR);
+    val|=1<<11;
+    RALINK_REG(RT2880_REG_PIODIR) = val; // GPIO 11 direction output
+    val=RALINK_REG(RT2880_REG_PIODATA);
+    val|=1<<11;
+    RALINK_REG(RT2880_REG_PIODATA) = val; // GPIO 11 High
+
+    //jeffzhou@onion.io
+    //adding for read wifi MAC address.
+    unsigned char macbuf[6];
 	raspi_read(macbuf, CFG_FACTORY_ADDR - CFG_FLASH_BASE + 0x04, 6);
 	printf("wifi mac address = %02X%02X%02X%02X%02X%02X.\n",
       macbuf[0],macbuf[1],macbuf[2],macbuf[3],macbuf[4],macbuf[5]);
+
+	// Set GPIO 40, 41, 42, 43 as OUTPUT pins
+    val = RALINK_REG(RT2880_REG_PIODIR + 0x04);
+    val |= (0x0F << 8); // Set bits 8, 9, 10, 11 to output mode (GPIO 40, 41, 42, 43)
+    RALINK_REG(RT2880_REG_PIODIR + 0x04) = val;
+
+    // Set SRCLR (GPIO 40) to HIGH so the chip is active and does not clear
+    RALINK_REG(0xb0000634) = (1 << 8); // Set GPIO 40 High
 }
 
 void led_on( void )
@@ -3071,7 +2772,22 @@ int detect_rst( void )
 	u32 val;
 	val = RALINK_REG(0xb0000620); // Read GPIO 0 to 31 (since GPIO 25 is in the first register)
 
-    if ( ! (val & (1 << 25)) ) // Active-low logic: returns 1 if GPIO 25 is pressed (GND)
+    if ( (val & (1 << 25)) == 0 ) // Active-low logic: returns 1 if GPIO 25 is pressed (GND)
+    {
+    	return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+int detect_wifi_btn( void )
+{
+	u32 val;
+	val = RALINK_REG(0xb0000620); // Read GPIO 0 to 31 (since GPIO 27 is in the first register)
+
+    if ( (val & (1 << 27)) == 0 ) // Active-low logic: returns 1 if GPIO 27 is pressed (GND)
     {
     	return 1;
     }
@@ -3312,3 +3028,38 @@ void write_macAddress(void)
 
 }
 
+#define PIN_CLK   (1 << 9)  // GPIO 41 (Clock)
+#define PIN_LATCH (1 << 10) // GPIO 42 (Latch / RCLK)
+#define PIN_SER   (1 << 11) // GPIO 43 (Serial Data / SER)
+
+void write_leds_595(u8 led_data)
+{
+    int i;
+    u16 total_data;
+    
+    // We shift led_data by 8 bits so it goes to the second chip (LEDs)
+    // 0x00 goes to the first chip (SIM Card) because we do not care about it
+    total_data = (led_data << 8) | 0x00; 
+
+    // 1. Pull LATCH to LOW to start receiving data
+    RALINK_REG(0xb0000644) = PIN_LATCH; 
+
+    // 2. Send 16 bits of data, one by one (from bit 15 down to 0)
+    for (i = 15; i >= 0; i--) {
+        // Pull CLK to LOW
+        RALINK_REG(0xb0000644) = PIN_CLK;
+
+        // Put the data bit on the SER pin
+        if (total_data & (1 << i)) {
+            RALINK_REG(0xb0000634) = PIN_SER; // SER = HIGH (1)
+        } else {
+            RALINK_REG(0xb0000644) = PIN_SER; // SER = LOW (0)
+        }
+
+        // Pull CLK to HIGH to save the data bit
+        RALINK_REG(0xb0000634) = PIN_CLK;
+    }
+
+    // 3. Pull LATCH to HIGH to display the new data on LEDs
+    RALINK_REG(0xb0000634) = PIN_LATCH;
+}
