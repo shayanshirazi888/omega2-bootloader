@@ -52,6 +52,8 @@ int modifies= 0;
 #define	TOTAL_MALLOC_LEN	CFG_MALLOC_LEN
 #endif
 
+#define ARGV_LEN  128
+
 #ifndef CPU_FRAC_DIV
 #define CPU_FRAC_DIV 1
 #endif
