@@ -31,8 +31,15 @@ jobs:
         chmod +x build.sh
         ./build.sh
 
+    # این مرحله را برای پیدا کردن مسیر دقیق فایل اضافه کردیم
+    - name: Find compiled binaries
+      run: |
+        echo "Looking for compiled .bin files..."
+        find . -name "*.bin"
+
+    # در اینجا مسیر را تغییر دادیم تا تمام پوشه‌ها را بگردد
     - name: Save Bootloader Binaries
       uses: actions/upload-artifact@v4
       with:
         name: omega2-bootloader-binaries
-        path: uboot-*.bin
+        path: '**/*.bin'
