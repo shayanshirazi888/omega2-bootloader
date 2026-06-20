@@ -36,7 +36,7 @@
 DECLARE_GLOBAL_DATA_PTR;
 #undef DEBUG
 
-#define SDRAM_CFG1_REG RALINK_SYSCTL_BASE + 0x0304
+#define SDRAM_CFG1_REG (RALINK_SYSCTL_BASE + 0x0304)
 
 int modifies= 0;
 
@@ -51,7 +51,10 @@ int modifies= 0;
 #else
 #define	TOTAL_MALLOC_LEN	CFG_MALLOC_LEN
 #endif
-#define ARGV_LEN  128
+
+#ifndef CPU_FRAC_DIV
+#define CPU_FRAC_DIV 1
+#endif
 
 #if defined (RT6855A_ASIC_BOARD) || defined(RT6855A_FPGA_BOARD)
 static int watchdog_reset();
@@ -666,10 +669,11 @@ void board_init_f(ulong bootflag)
 #elif defined(MT7628_ASIC_BOARD)
 	value = RALINK_REG(RALINK_DYN_CFG0_REG);
 	fdiv = (unsigned long)((value>>8)&0x0F);
-	if ((CPU_FRAC_DIV < 1) || (CPU_FRAC_DIV > 10))
-	frac = (unsigned long)(value&0x0F);
-	else
+	if ((CPU_FRAC_DIV < 1) || (CPU_FRAC_DIV > 10)) {
+		frac = (unsigned long)(value&0x0F);
+	} else {
 		frac = CPU_FRAC_DIV;
+	}
 	i = 0;
 
 	while(frac < fdiv) {
@@ -959,37 +963,34 @@ int tftp_config(int type, char *argv[])
 	char *s;
 	char default_file[ARGV_LEN], file[ARGV_LEN], devip[ARGV_LEN], srvip[ARGV_LEN], default_ip[ARGV_LEN];
 
-	printf(" Please Input new ones /or Ctrl-C to discard\n");
-
-	memset(default_file, 0, ARGV_LEN);
-	memset(file, 0, ARGV_LEN);
-	memset(devip, 0, ARGV_LEN);
-	memset(srvip, 0, ARGV_LEN);
-	memset(default_ip, 0, ARGV_LEN);
-
 	printf("\tInput device IP ");
 	s = getenv("ipaddr");
-	memcpy(devip, s, strlen(s));
-	memcpy(default_ip, s, strlen(s));
+	if (s != NULL) {
+		memcpy(devip, s, strlen(s));
+		memcpy(default_ip, s, strlen(s));
+	}
 
 	printf("(%s) ", devip);
-	input_value(devip);
+	input_value((u8 *)devip); // تبدیل به پوینتر مناسب برای جلوگیری از Warning
 	setenv("ipaddr", devip);
 	if (strcmp(default_ip, devip) != 0)
 		modifies++;
 
 	printf("\tInput server IP ");
 	s = getenv("serverip");
-	memcpy(srvip, s, strlen(s));
 	memset(default_ip, 0, ARGV_LEN);
-	memcpy(default_ip, s, strlen(s));
+	if (s != NULL) {
+		memcpy(srvip, s, strlen(s));
+		memcpy(default_ip, s, strlen(s));
+	}
 
 	printf("(%s) ", srvip);
-	input_value(srvip);
+	input_value((u8 *)srvip); // تبدیل به پوینتر مناسب
 	setenv("serverip", srvip);
 
 	if (strcmp(default_ip, srvip) != 0)
 		modifies++;
+
 
 	if(type == SEL_LOAD_BOOT_SDRAM
 			|| type == SEL_LOAD_BOOT_WRITE_FLASH
@@ -1001,17 +1002,16 @@ int tftp_config(int type, char *argv[])
 #if defined (RT2880_ASIC_BOARD) || defined (RT2880_FPGA_BOARD)
 			argv[1] = "0x8a200000";
 #else
-		argv[1] = "0x80200000";
+			argv[1] = "0x80200000";
 #endif
 		else
 #if defined (RT2880_ASIC_BOARD) || defined (RT2880_FPGA_BOARD)
 			argv[1] = "0x8a100000";
 #else
-		argv[1] = "0x80100000";
+			argv[1] = "0x80100000";
 #endif
 		printf("\tInput Uboot filename ");
-		//argv[2] = "uboot.bin";
-		strncpy(argv[2], "uboot.bin", ARGV_LEN);
+		argv[2] = "uboot.bin";   // اصلاح شد
 	}
 	else if (type == SEL_LOAD_LINUX_WRITE_FLASH) {
 #if defined (RT2880_ASIC_BOARD) || defined (RT2880_FPGA_BOARD)
@@ -1020,19 +1020,16 @@ int tftp_config(int type, char *argv[])
 		argv[1] = "0x80100000";
 #endif
 		printf("\tInput Linux Kernel filename ");
-		//argv[2] = "uImage"; winfred: use strncpy instead to prevent the buffer overflow at copy_filename later
-		strncpy(argv[2], "uImage", ARGV_LEN);
+		argv[2] = "uImage";      // اصلاح شد
 	}
 	else if (type == SEL_LOAD_LINUX_SDRAM ) {
-		/* bruce to support ramdisk */
 #if defined (RT2880_ASIC_BOARD) || defined (RT2880_FPGA_BOARD)
 		argv[1] = "0x8a800000";
 #else
 		argv[1] = "0x80A00000";
 #endif
 		printf("\tInput Linux Kernel filename ");
-		//argv[2] = "uImage";
-		strncpy(argv[2], "uImage", ARGV_LEN);
+		argv[2] = "uImage";      // اصلاح شد
 	}
 
 	s = getenv("bootfile");
@@ -1041,17 +1038,18 @@ int tftp_config(int type, char *argv[])
 		memcpy(default_file, s, strlen(s));
 	}
 	printf("(%s) ", file);
-	input_value(file);
-	if (file == NULL)
+	input_value((u8 *)file);
+	
+	if (file[0] == '\0') // اصلاح شد: بررسی رشته خالی به جای NULL
 		return 1;
+		
 	copy_filename (argv[2], file, sizeof(file));
 	setenv("bootfile", file);
 	if (strcmp(default_file, file) != 0)
 		modifies++;
 
 	return 0;
-}
-
+ }
 void trigger_hw_reset(void)
 {
 #ifdef GPIO14_RESET_MODE
@@ -1187,7 +1185,7 @@ int check_image_validation(void)
 
 #if defined (CFG_ENV_IS_IN_NAND)
 	ranand_read((char *)&hdr1, (unsigned int)hdr1_addr - CFG_FLASH_BASE, sizeof(image_header_t));
-	ranand_read(char *)(&hdr2, (unsigned int)hdr2_addr - CFG_FLASH_BASE, sizeof(image_header_t));
+	ranand_read((char *)&hdr2, (unsigned int)hdr2_addr - CFG_FLASH_BASE, sizeof(image_header_t));
 #elif defined (CFG_ENV_IS_IN_SPI)
 	raspi_read((char *)&hdr1, (unsigned int)hdr1_addr - CFG_FLASH_BASE, sizeof(image_header_t));
 	raspi_read((char *)&hdr2, (unsigned int)hdr2_addr - CFG_FLASH_BASE, sizeof(image_header_t));
@@ -2959,74 +2957,95 @@ void gpio_test( int vtest ) //Test Omega2 GPIO
 	RALINK_REG(0xb0000624)=gpio_dat1;
 }
 
- // Added by jeffzhou@onion.io
-void StringToHex(char *str, unsigned char *strhex)
+// Added by jeffzhou@onion.io, fixed by Claude
+int StringToHex(const char *str, unsigned char *strhex, int max_nibbles)
 {
-	uint8_t i,cnt=0;
-	char *p = str;             
-	uint8_t len = strlen(str); 
-	
-	while(*p != '\0') {        
-		for (i = 0; i < len; i ++)  
-		{
-			if ((*p >= '0') && (*p <= '9')) 
-				strhex[cnt] = *p - '0' + 0x0;
-			
-			if ((*p >= 'A') && (*p <= 'Z')) 
-				strhex[cnt] = *p - 'A' + 0xA;
-			
-			if ((*p >= 'a') && (*p <= 'z')) 
-				strhex[cnt] = *p - 'a' + 0xA;
+	int cnt = 0;
+	const char *p = str;
 
-			p ++;    
-			cnt ++;  
-		}
+	if (str == NULL || strhex == NULL)
+		return 0;
+
+	while (*p != '\0' && cnt < max_nibbles) {
+		if ((*p >= '0') && (*p <= '9'))
+			strhex[cnt++] = *p - '0';
+		else if ((*p >= 'A') && (*p <= 'F'))
+			strhex[cnt++] = *p - 'A' + 0xA;
+		else if ((*p >= 'a') && (*p <= 'f'))
+			strhex[cnt++] = *p - 'a' + 0xA;
+		/* anything else (':' '-' ' ' etc.) is a separator: skip it */
+		p++;
 	}
+
+	return cnt;
 }
 
 void write_macAddress(void)
 {
-	char *inputStr = NULL;
-  	unsigned char outputHex[16],macHex[6];
-	int i;
+	char inputStr[ARGV_LEN];
+	unsigned char outputHex[12], macHex[6];
+	unsigned char *factory_buf;
+	int i, factory_size = 0x10000; // حجم 64 کیلوبایت سکتور Factory
+
+	memset(inputStr, 0, sizeof(inputStr));
 
 	printf("\nInput mac ");
+	input_value((u8 *)inputStr);
 
-	input_value(inputStr);
+	if (StringToHex(inputStr, outputHex, 12) != 12) {
+		printf("\nInvalid mac address format. Expected 12 hex digits.\n");
+		return;
+	}
 
-	StringToHex(inputStr,outputHex);
-	
-	for ( i = 0; i < 6; i ++) 
-	{
- 	  int t1 = i<<1;
-	  macHex[i] = (outputHex[t1]<<4)+outputHex[t1+1];
+	for (i = 0; i < 6; i++) {
+		int t1 = i << 1;
+		macHex[i] = (outputHex[t1] << 4) + outputHex[t1 + 1];
 	}
 
 	printf("\nwrite wifi mac address = %02X-%02X-%02X-%02X-%02X-%02X \n",
-			macHex[0],macHex[1],macHex[2],macHex[3],macHex[4],macHex[5]);
+			macHex[0], macHex[1], macHex[2], macHex[3], macHex[4], macHex[5]);
 
-	if(
-		((macHex[0] == 0x40) && (macHex[1] == 0xA3) && (macHex[2] == 0x6b) && (((macHex[3] & 0xf0)^0xc0) == 0x00)) ||
-		((macHex[0] == 0x88) && (macHex[1] == 0x1e) && (macHex[2] == 0x59))
-	)
+	if ( ((macHex[0] == 0x40) && (macHex[1] == 0xA3) && (macHex[2] == 0x6b) && (((macHex[3] & 0xf0)^0xc0) == 0x00)) ||
+	     ((macHex[0] == 0x88) && (macHex[1] == 0x1e) && (macHex[2] == 0x59)) )
 	{
-		raspi_erase_write((char *)macHex, CFG_FACTORY_ADDR - CFG_FLASH_BASE + 0x04, 6);
+		// اختصاص حافظه برای خواندن کل سکتور کالیبراسیون
+		factory_buf = (unsigned char *)malloc(factory_size);
+		if (!factory_buf) {
+			printf("\nError: Malloc failed for factory buffer!\n");
+			return;
+		}
 
-		// increment by 1 and write to location for eth0 mac addr
-		macHex[5]=macHex[5] + 1;
-		raspi_erase_write((char *)macHex, CFG_FACTORY_ADDR - CFG_FLASH_BASE + 0x28, 6);
+		// خواندن کل بلوک Factory
+		raspi_read((char *)factory_buf, CFG_FACTORY_ADDR - CFG_FLASH_BASE, factory_size);
 
-		// increment by 1 more and write to location for apcli0 mac addr
-		macHex[5]=macHex[5] + 1;
-		raspi_erase_write((char *)macHex, CFG_FACTORY_ADDR - CFG_FLASH_BASE + 0x2E, 6);
+		// 1. آپدیت مک آدرس وای فای (آفست 0x04)
+		memcpy(factory_buf + 0x04, macHex, 6);
+
+		// 2. افزایش و آپدیت مک آدرس پورت شبکه eth0 (آفست 0x28)
+		for (i = 5; i >= 0; i--) {
+			macHex[i]++;
+			if (macHex[i] != 0) break; // اگر صفر نشد یعنی سرریز نداریم
+		}
+		memcpy(factory_buf + 0x28, macHex, 6);
+
+		// 3. افزایش و آپدیت مک آدرس apcli0 (آفست 0x2E)
+		for (i = 5; i >= 0; i--) {
+			macHex[i]++;
+			if (macHex[i] != 0) break;
+		}
+		memcpy(factory_buf + 0x2E, macHex, 6);
+
+		// رایت مجدد کل بلوک روی فلش (با این روش اطلاعات کالیبراسیون وای‌فای حفظ می‌شود)
+		raspi_erase_write((char *)factory_buf, CFG_FACTORY_ADDR - CFG_FLASH_BASE, factory_size);
+		
+		free(factory_buf);
 		printf("\nwrite mac address ok\n");
-        }
+	}
 	else
 	{
 		printf("\nwrite mac address error\n");
 	}
-
-}
+} 
 
 #define PIN_CLK   (1 << 9)  // GPIO 41 (Clock)
 #define PIN_LATCH (1 << 10) // GPIO 42 (Latch / RCLK)

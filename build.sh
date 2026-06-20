@@ -43,7 +43,7 @@ buildBinary () {
 }
 
 # main program
-buildBinary "omega2" "512"
+#buildBinary "omega2" "512"
 buildBinary "omega2p" "1024"
 
 echo "> Done"
