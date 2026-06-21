@@ -132,6 +132,7 @@ void led_off(void);
 
 // Added by zh@onion.io
 int detect_rst(void); // rename wps button to rst
+int detect_wifi_btn(void);
 void gpio_test(int vtest);
 void write_macAddress(void); // Added by jeffzhou@onion.io
 void set_gpio_led(int vreg,int vgpio) ;//jeff
@@ -2027,40 +2028,51 @@ void board_init_r (gd_t *id, ulong dest_addr)
 
     // zh@onion.io
     // enter boot menu only when reset button is pressed
-    if (detect_rst())
+   if (detect_rst())
     {
-
-        printf("You have %d seconds left to select a menu option...\n\n", timer1 * 8);
-
-        OperationSelect();
-
-        //default
-        BootType = 'b';
-
-        // zh@onion.io
-        // wait for user input
-        while (timer1 > 0)
+        // بررسی فشرده شدن کلید وای‌فای به صورت همزمان
+        if (detect_wifi_btn())
         {
-            --timer1;
-            /* delay 100 * 10ms */
-            for (i = 0; i < 100; ++i)
+            printf("\n[!] Reset AND WiFi buttons detected!\n");
+            printf("[!] Entering Web Recovery Mode directly...\n\n");
+            
+            // انتخاب مستقیم گزینه 0 (Web Recovery)
+            BootType = '0';
+        }
+        else
+        {
+            printf("You have %d seconds left to select a menu option...\n\n", timer1 * 8);
+
+            OperationSelect();
+
+            //default
+            BootType = 'b';
+
+            // zh@onion.io
+            // wait for user input
+            while (timer1 > 0)
             {
+                --timer1;
+                /* delay 100 * 10ms */
+                for (i = 0; i < 100; ++i)
+                {
 
-                led_on();
+                    led_on();
 
-                if ((my_tmp = tstc()) != 0)
-                {    /* we got a key press	*/
-                    timer1 = 0;    /* no more delay	*/
-                    BootType = getc();
+                    if ((my_tmp = tstc()) != 0)
+                    {    /* we got a key press	*/
+                        timer1 = 0;    /* no more delay	*/
+                        BootType = getc();
 
-                    printf("\n\rOption [%c] selected.\n", BootType);
-                    break;
+                        printf("\n\rOption [%c] selected.\n", BootType);
+                        break;
+                    }
+
+                    udelay(30000);
+                    led_off();
+                    udelay(30000);
+
                 }
-
-                udelay(30000);
-                led_off();
-                udelay(30000);
-
             }
         }
 
@@ -3033,10 +3045,12 @@ void gpio_init(void)
     val |= (1<<10);  // Set bits 11:10 to 01 (GPIO mode)
     RALINK_REG(RT2880_SYS_CNTL_BASE+0x60) = val;
 
-    // Set GPIO 25 direction as INPUT
+    // Set GPIO 25 and 27 direction as INPUT
     val = RALINK_REG(RT2880_REG_PIODIR);
     val &= ~(1<<25); // Clear bit 25 (Set as Input)
+    val &= ~(1<<27); // Clear bit 27 (Set as Input) - Added for WiFi Button
     RALINK_REG(RT2880_REG_PIODIR) = val;
+
   //zh@onion.io
   //setting GPIO 11 High, required for the reset button to work
   val=RALINK_REG(RT2880_REG_PIODIR);
@@ -3079,6 +3093,21 @@ int detect_rst( void )
     {
         return 0;
     }
+}
+
+int detect_wifi_btn( void )
+{
+	u32 val;
+	val = RALINK_REG(0xb0000620); // Read GPIO 0 to 31
+
+	if ( ! (val & (1 << 27)) ) // Active-low logic for GPIO 27
+	{
+		return 1;
+	}
+	else
+	{
+		return 0;
+	}
 }
 
 void set_gpio_led(int vreg,int vgpio)  //jeff add for gpio test at 20190125
