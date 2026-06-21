@@ -3046,12 +3046,10 @@ void gpio_init(void)
     // val |= (1<<10);  <-- این خط را حتماً کامنت یا پاک کنید!
     RALINK_REG(RT2880_SYS_CNTL_BASE+0x60) = val;
 
-    // Set GPIO 25 and 27 direction as INPUT
+// Set GPIO 25 and GPIO 29 direction as INPUT
     val = RALINK_REG(RT2880_REG_PIODIR);
-    val &= ~(1<<25); // Clear bit 25 (Set as Input)
-    val &= ~(1<<27); // Clear bit 27 (Set as Input)
+    val &= ~((1<<25) | (1<<29)); 
     RALINK_REG(RT2880_REG_PIODIR) = val;
-
 
   //zh@onion.io
   //setting GPIO 11 High, required for the reset button to work
@@ -3099,28 +3097,18 @@ int detect_rst( void )
 
 int detect_wifi_btn( void )
 {
-	u32 val0_31, val32_63;
-	
-	// یک تاخیر کوتاه برای اینکه اگر نویز یا پرشی هست برطرف شود
-	udelay(50000); 
+	u32 val;
+	val = RALINK_REG(0xb0000620); // Read GPIO 0 to 31 
 
-	val0_31 = RALINK_REG(0xb0000620); // Read GPIO 0 to 31
-	val32_63 = RALINK_REG(0xb0000624); // Read GPIO 32 to 63
-
-	printf("\n[DEBUG] GPIO 0 to 31 HEX : 0x%08X\n", val0_31);
-	printf("[DEBUG] GPIO 32 to 63 HEX: 0x%08X\n", val32_63);
-	printf("[DEBUG] WiFi Button (GPIO 27) Bit: %d\n", (val0_31 >> 27) & 1);
-
-	if ( ! (val0_31 & (1 << 27)) ) // Active-low logic for GPIO 27
-	{
-		return 1;
-	}
-	else
-	{
-		return 0;
-	}
+    if ( (val & (1 << 29)) == 0 )
+    {
+    	return 1;
+    }
+    else
+    {
+        return 0;
+    }
 }
-
 void set_gpio_led(int vreg,int vgpio)  //jeff add for gpio test at 20190125
 {
 	if(vreg == 0)
