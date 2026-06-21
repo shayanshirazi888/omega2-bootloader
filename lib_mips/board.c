@@ -3039,10 +3039,10 @@ void gpio_init(void)
 
 	RALINK_REG(RT2880_REG_PIODIR+0x04)=val;
 
-	// Set SD_MODE to GPIO mode (enables GPIO 18 to 29, which includes GPIO 25)
+// Set SD_MODE to GPIO mode (enables GPIO 18 to 29, which includes GPIO 25 and 27)
     val = RALINK_REG(RT2880_SYS_CNTL_BASE+0x60);
     val &= ~(3<<10); // Clear bits 11:10
-    val |= (1<<10);  // Set bits 11:10 to 01 (GPIO mode)
+    val |= (2<<10);  // تغییر به 2 (حالت اصلی GPIO در MT7688)
     RALINK_REG(RT2880_SYS_CNTL_BASE+0x60) = val;
 
     // Set GPIO 25 and 27 direction as INPUT
@@ -3100,6 +3100,8 @@ int detect_wifi_btn( void )
 	u32 val;
 	val = RALINK_REG(0xb0000620); // Read GPIO 0 to 31
 
+	printf("\n[DEBUG] WiFi Button (GPIO 27) Raw State: %d\n", (val >> 27) & 1);
+
 	if ( ! (val & (1 << 27)) ) // Active-low logic for GPIO 27
 	{
 		return 1;
@@ -3109,7 +3111,6 @@ int detect_wifi_btn( void )
 		return 0;
 	}
 }
-
 void set_gpio_led(int vreg,int vgpio)  //jeff add for gpio test at 20190125
 {
 	if(vreg == 0)
