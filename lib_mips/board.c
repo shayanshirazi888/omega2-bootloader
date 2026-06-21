@@ -3039,17 +3039,19 @@ void gpio_init(void)
 
 	RALINK_REG(RT2880_REG_PIODIR+0x04)=val;
 
-// Set SD_MODE to GPIO mode (enables GPIO 18 to 29, which includes GPIO 25 and 27)
+	
+// Set SD_MODE to GPIO mode (00 is the real GPIO mode in MT7688)
     val = RALINK_REG(RT2880_SYS_CNTL_BASE+0x60);
-    val &= ~(3<<10); // Clear bits 11:10
-    val |= (2<<10);  // تغییر به 2 (حالت اصلی GPIO در MT7688)
+    val &= ~(3<<10); // Clear bits 11:10 (Set to 00 -> GPIO Mode)
+    // val |= (1<<10);  <-- این خط را حتماً کامنت یا پاک کنید!
     RALINK_REG(RT2880_SYS_CNTL_BASE+0x60) = val;
 
     // Set GPIO 25 and 27 direction as INPUT
     val = RALINK_REG(RT2880_REG_PIODIR);
     val &= ~(1<<25); // Clear bit 25 (Set as Input)
-    val &= ~(1<<27); // Clear bit 27 (Set as Input) - Added for WiFi Button
+    val &= ~(1<<27); // Clear bit 27 (Set as Input)
     RALINK_REG(RT2880_REG_PIODIR) = val;
+
 
   //zh@onion.io
   //setting GPIO 11 High, required for the reset button to work
