@@ -2030,59 +2030,6 @@ void board_init_r (gd_t *id, ulong dest_addr)
 /*failsafe end!*/
 // #endif
 
-// ====================================================================
-    // [PGP BOOT MENU & RESET BUTTON LOGIC] 
-    // ====================================================================
-
-    // 1. Enter boot menu only when reset button is pressed
-    if (detect_rst())
-    {
-        // DECLARE VARIABLES AT THE TOP OF THE BLOCK (Fix for GCC 3.4 strict C89)
-        char *argv[5];
-        int argc = 3;
-
-        // Check if WiFi button is ALSO pressed simultaneously
-        if (detect_wifi_btn())
-        {
-            printf("\n[!] Reset AND WiFi buttons detected!\n");
-            printf("[!] Entering Web Recovery Mode directly...\n\n");
-            BootType = '0'; // Directly select Web Recovery
-        }
-        else
-        {
-            printf("You have %d seconds left to select a menu option...\n\n", timer1 * 8);
-
-            OperationSelect();
-
-            BootType = 'b'; // default action
-
-            // Wait for user input (Timeout loop)
-            while (timer1 > 0)
-            {
-                --timer1;
-                /* delay 100 * 10ms */
-                for (i = 0; i < 100; ++i)
-                {
-                    led_on();
-
-                    if ((my_tmp = tstc()) != 0)
-                    {    /* we got a key press	*/
-                        timer1 = 0;    /* no more delay	*/
-                        BootType = getc();
-
-                        printf("\n\rOption [%c] selected.\n", BootType);
-                        break;
-                    }
-
-                    udelay(30000);
-                    led_off();
-                    udelay(30000);
-                }
-            }
-
-/*failsafe end!*/
-// #endif
-
     // ====================================================================
     // [PGP BOOT MENU, WEB RECOVERY & FACTORY RESET LOGIC] 
     // ====================================================================
