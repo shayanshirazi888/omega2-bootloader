@@ -2080,7 +2080,7 @@ void board_init_r (gd_t *id, ulong dest_addr)
                 }
             }
 
-            // ==========================================================
+// ==========================================================
             // [PGP LOGIC]: If NO option was typed by the user ('b'), 
             // check if the user is STILL holding the Reset button!
             // ==========================================================
@@ -2089,6 +2089,10 @@ void board_init_r (gd_t *id, ulong dest_addr)
                 if (detect_rst()) 
                 {
                     int ms_count = 0;
+                    char *rst_argv[2];
+                    rst_argv[0] = "reset";
+                    rst_argv[1] = NULL;
+
                     printf("\n[PGP] Button STILL held after menu timeout! Starting 5-second countdown:\n");
 
                     // Check button state every 100ms, up to 50 times (5 seconds)
@@ -2105,10 +2109,20 @@ void board_init_r (gd_t *id, ulong dest_addr)
                         printf("\n\n>>> FACTORY RESET TRIGGERED! Wiping config... <<<\n");
                         setenv("factory_reset", "1");
                         saveenv();
-                        do_reset(NULL, 0, 0, NULL); // Safely reboot CPU immediately
+                        
+                        // 1. Safe Software Reset
+                        do_reset(cmdtp, 0, 1, rst_argv);
+                        // 2. Hard Hardware Reset Fallback (In case software reset freezes)
+                        RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
+                        while(1);
                     } else {
                         printf("\n\n>>> BUTTON RELEASED EARLY -> REBOOTING! <<<\n");
-                        do_reset(NULL, 0, 0, NULL); // Safely reboot CPU immediately
+                        
+                        // 1. Safe Software Reset
+                        do_reset(cmdtp, 0, 1, rst_argv);
+                        // 2. Hard Hardware Reset Fallback (In case software reset freezes)
+                        RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
+                        while(1);
                     }
                 }
                 else 
