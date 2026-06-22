@@ -2030,13 +2030,17 @@ void board_init_r (gd_t *id, ulong dest_addr)
 /*failsafe end!*/
 // #endif
 
-    // ====================================================================
+// ====================================================================
     // [PGP BOOT MENU & RESET BUTTON LOGIC] 
     // ====================================================================
 
     // 1. Enter boot menu only when reset button is pressed
     if (detect_rst())
     {
+        // DECLARE VARIABLES AT THE TOP OF THE BLOCK (Fix for GCC 3.4 strict C89)
+        char *argv[5];
+        int argc = 3;
+
         // Check if WiFi button is ALSO pressed simultaneously
         if (detect_wifi_btn())
         {
@@ -2101,10 +2105,10 @@ void board_init_r (gd_t *id, ulong dest_addr)
                         printf("\n\n>>> FACTORY RESET TRIGGERED! Wiping config... <<<\n");
                         setenv("factory_reset", "1");
                         saveenv();
-                        do_reset(cmdtp, 0, argc, argv); // Reboot CPU immediately
+                        do_reset(NULL, 0, 0, NULL); // Safely reboot CPU immediately
                     } else {
                         printf("\n\n>>> BUTTON RELEASED EARLY -> REBOOTING! <<<\n");
-                        do_reset(cmdtp, 0, argc, argv); // Reboot CPU immediately
+                        do_reset(NULL, 0, 0, NULL); // Safely reboot CPU immediately
                     }
                 }
                 else 
@@ -2115,9 +2119,6 @@ void board_init_r (gd_t *id, ulong dest_addr)
             }
             // ==========================================================
         }
-
-        char *argv[5];
-        int argc = 3;
 
         // Process Boot Menu Options
         switch (BootType)
@@ -2164,11 +2165,15 @@ void board_init_r (gd_t *id, ulong dest_addr)
                 do_tftpb(cmdtp, 0, argc, argv);
 
 #if defined (CFG_ENV_IS_IN_NAND)
-                unsigned int load_address_nand = simple_strtoul(argv[1], NULL, 16);
-                ranand_erase_write((u8 *)load_address_nand, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
+                {
+                    unsigned int load_address_nand = simple_strtoul(argv[1], NULL, 16);
+                    ranand_erase_write((u8 *)load_address_nand, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
+                }
 #elif defined (CFG_ENV_IS_IN_SPI)
-                unsigned int load_address_spi = simple_strtoul(argv[1], NULL, 16);
-                raspi_erase_write((u8 *)load_address_spi, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
+                {
+                    unsigned int load_address_spi = simple_strtoul(argv[1], NULL, 16);
+                    raspi_erase_write((u8 *)load_address_spi, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
+                }
 #else 
                 // FLASH LOGIC ... (Kept original logic)
 #endif 
@@ -2202,12 +2207,15 @@ void board_init_r (gd_t *id, ulong dest_addr)
 #endif 
 
             default:
-                printf("\nBoot Linux from Flash.\n");
+            {
+                // Added scope {} to safely declare argv_normal in strict C
                 char *argv_normal[2];
+                printf("\nBoot Linux from Flash.\n");
                 sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
                 argv_normal[1] = &addr_str[0];
                 do_bootm(cmdtp, 0, 2, argv_normal);
                 break;
+            }
 
         } /* end of switch */
 
@@ -2216,14 +2224,15 @@ void board_init_r (gd_t *id, ulong dest_addr)
     }
     else
     {
-        printf("\nBoot Linux from Flash NO RESET PRESSED.\n");
+        // Moved declaration to top of block
         char *argv_normal[2];
+        printf("\nBoot Linux from Flash NO RESET PRESSED.\n");
         sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
         argv_normal[1] = &addr_str[0];
         do_bootm(cmdtp, 0, 2, argv_normal);
     }
 	/* NOTREACHED - no way out of command loop except booting */
-}
+
 
 void hang (void)
 {
