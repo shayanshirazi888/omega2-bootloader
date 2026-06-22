@@ -2080,58 +2080,95 @@ void board_init_r (gd_t *id, ulong dest_addr)
                 }
             }
 
-// ==========================================================
-            // [PGP LOGIC]: If NO option was typed by the user ('b'), 
-            // check if the user is STILL holding the Reset button!
-            // ==========================================================
+// ====================================================================
+    // [PGP BOOT MENU, WEB RECOVERY & FACTORY RESET LOGIC] 
+    // ====================================================================
+
+    // SCENARIO 2 & 3: Check if Reset button is pressed at Power-On
+    if (detect_rst())
+    {
+        char *argv[5];
+        int argc = 3;
+
+        // SCENARIO 3: BOTH Reset and WiFi buttons are pressed
+        if (detect_wifi_btn())
+        {
+            int ms_count = 0;
+            printf("\n[!] Reset AND WiFi buttons detected at Power-on!\n");
+            printf("[!] Starting FACTORY RESET process. Hold for 5 seconds...\n\n");
+
+            // Count 5 seconds (50 * 100ms)
+            while (detect_rst() && detect_wifi_btn() && ms_count < 50) 
+            {
+                if (ms_count % 10 == 0) { 
+                    printf("%d... ", 5 - (ms_count / 10));
+                }
+                udelay(100000); // 100ms delay
+                ms_count++;
+            }
+
+            if (ms_count >= 50) {
+                // Fully held for 5 seconds
+                printf("\n\n>>> FACTORY RESET TRIGGERED! Wiping config... <<<\n");
+                setenv("factory_reset", "1");
+                saveenv();
+                
+                // Hard Hardware Reboot
+                RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
+                while(1); 
+            } else {
+                // Released early
+                printf("\n\n>>> BUTTONS RELEASED EARLY -> ABORTING & REBOOTING! <<<\n");
+                RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
+                while(1);
+            }
+        }
+        else
+        {
+            // SCENARIO 2: ONLY Reset button is pressed
+            printf("You have %d seconds left to select a menu option...\n\n", timer1 * 8);
+
+            OperationSelect();
+
+            BootType = 'b'; // default action
+
+            // Wait for user input (Timeout loop)
+            while (timer1 > 0)
+            {
+                --timer1;
+                /* delay 100 * 10ms */
+                for (i = 0; i < 100; ++i)
+                {
+                    led_on();
+
+                    if ((my_tmp = tstc()) != 0)
+                    {    /* we got a key press	*/
+                        timer1 = 0;    /* no more delay	*/
+                        BootType = getc();
+
+                        printf("\n\rOption [%c] selected.\n", BootType);
+                        break;
+                    }
+
+                    udelay(30000);
+                    led_off();
+                    udelay(30000);
+                }
+            }
+
+            // After timeout, check if user is STILL holding the Reset button
             if (BootType == 'b') 
             {
                 if (detect_rst()) 
                 {
-                    int ms_count = 0;
-                    char *rst_argv[2];
-                    rst_argv[0] = "reset";
-                    rst_argv[1] = NULL;
-
-                    printf("\n[PGP] Button STILL held after menu timeout! Starting 5-second countdown:\n");
-
-                    // Check button state every 100ms, up to 50 times (5 seconds)
-                    while (detect_rst() && ms_count < 50) 
-                    {
-                        if (ms_count % 10 == 0) { 
-                            printf("%d... ", 5 - (ms_count / 10));
-                        }
-                        udelay(100000); // 100ms delay
-                        ms_count++;
-                    }
-
-                    if (ms_count >= 50) {
-                        printf("\n\n>>> FACTORY RESET TRIGGERED! Wiping config... <<<\n");
-                        setenv("factory_reset", "1");
-                        saveenv();
-                        
-                        // 1. Safe Software Reset
-                        do_reset(cmdtp, 0, 1, rst_argv);
-                        // 2. Hard Hardware Reset Fallback (In case software reset freezes)
-                        RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
-                        while(1);
-                    } else {
-                        printf("\n\n>>> BUTTON RELEASED EARLY -> REBOOTING! <<<\n");
-                        
-                        // 1. Safe Software Reset
-                        do_reset(cmdtp, 0, 1, rst_argv);
-                        // 2. Hard Hardware Reset Fallback (In case software reset freezes)
-                        RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
-                        while(1);
-                    }
+                    printf("\n[PGP] Reset button STILL held! Auto-selecting Web Recovery Mode...\n");
+                    BootType = '0'; // Web Recovery mode
                 }
                 else 
                 {
-                    printf("\n[PGP] Button released. Proceeding to normal boot...\n");
-                    // Just let it continue to default booting below
+                    printf("\n[PGP] Reset button released. Proceeding to normal boot...\n");
                 }
             }
-            // ==========================================================
         }
 
         // Process Boot Menu Options
@@ -2222,7 +2259,6 @@ void board_init_r (gd_t *id, ulong dest_addr)
 
             default:
             {
-                // Added scope {} to safely declare argv_normal in strict C
                 char *argv_normal[2];
                 printf("\nBoot Linux from Flash.\n");
                 sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
@@ -2238,7 +2274,7 @@ void board_init_r (gd_t *id, ulong dest_addr)
     }
     else
     {
-        // Moved declaration to top of block
+        // SCENARIO 1: No buttons pressed at power-on
         char *argv_normal[2];
         printf("\nBoot Linux from Flash NO RESET PRESSED.\n");
         sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
