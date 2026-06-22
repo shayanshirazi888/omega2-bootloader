@@ -1,25 +1,47 @@
 <!DOCTYPE html>
-<html>
-	<head>
-		<meta charset="utf-8">
-		<title>Firmware Update - Onion Omega</title>
-		<link rel="stylesheet" href="style.css">
-	</head>
-	<body>
-		<div class="wrapper">
-			<div class="center"><img id="l" src="o.gif"></div>
-			<h1 class="center">Firmware Update</h1>
-			<p>You are about to update the <strong>firmware</strong> on the Omega. Select the <strong>.bin</strong> file from your computer and click the <strong>Update!</strong> button.</p>
-			<form method="post" enctype="multipart/form-data"><input type="file" name="firmware"><button type="submit" class="success">Update!</button></form>
-			<div class="alert warning">
-				<strong>Warnings</strong>
-				<ul>
-					<li>Do not power off the device during update.</li>
-					<li>If everything goes well, the device will restart.</li>
-					<li>Please make sure that you choose the firmware image specific for your device.</li>
-				</ul>
-			</div>
-		</div>
-		<p class="center"><a href="uboot.html">uBoot Update</a>&nbsp;|&nbsp;<a href="art.html">ART Update</a></p>
-	</body>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PGP | Firmware Update</title>
+    <style>
+        body { background-color: #f4f7f6; background-image: linear-gradient(#e4e9f0 1px, transparent 1px), linear-gradient(90deg, #e4e9f0 1px, transparent 1px); background-size: 20px 20px; font-family: 'Segoe UI', Roboto, Helvetica, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; color: #2c3e50; }
+        .panel { background: #ffffff; padding: 45px 40px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; max-width: 480px; width: 100%; border-top: 5px solid #007bff; box-sizing: border-box; }
+        .logo { font-size: 48px; font-weight: 900; color: #1a252f; letter-spacing: 2px; margin: 0; line-height: 1; }
+        .logo span { color: #007bff; }
+        .sys-text { font-size: 12px; font-weight: 600; color: #7f8c8d; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; margin-bottom: 25px; }
+        .file-input { margin: 10px 0 20px 0; padding: 12px; border: 2px dashed #bdc3c7; border-radius: 6px; width: 100%; box-sizing: border-box; background: #fafbfc; color: #2c3e50; cursor: pointer; font-weight: bold; }
+        .file-input:hover { border-color: #007bff; }
+        .btn { background-color: #007bff; color: #ffffff; border: none; padding: 14px 25px; font-size: 16px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; transition: 0.2s; box-sizing: border-box; }
+        .btn:hover { background-color: #0056b3; }
+        .warning { font-size: 13px; color: #e74c3c; margin-top: 25px; text-align: left; background: #fdf2f2; padding: 12px; border-left: 4px solid #e74c3c; border-radius: 4px; line-height: 1.5; }
+        .footer-nav { margin-top: 30px; padding-top: 15px; border-top: 1px solid #ecf0f1; font-size: 13px; font-weight: bold; }
+        .footer-nav a { color: #95a5a6; text-decoration: none; transition: 0.2s; }
+        .footer-nav a:hover { color: #2c3e50; }
+    </style>
+</head>
+<body>
+<div class="panel">
+    <div class="logo">PGP<span>.</span></div>
+    <div class="sys-text">System Firmware Flash Tool</div>
+    
+    <div style="text-align: left; font-size: 14px; background: #f8f9fa; padding: 12px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #eee;">
+        <strong>Target:</strong> <span style="color: #007bff;">LINUX OS (FIRMWARE)</span>
+    </div>
+
+    <!-- فرم کاملا منطبق با استاندارد U-Boot اورجینال -->
+    <form method="post" enctype="multipart/form-data">
+        <input type="file" name="firmware" class="file-input" required accept=".bin" />
+        <button type="submit" class="btn">Update Firmware</button>
+    </form>
+
+    <div class="warning">
+        <strong>⚠️ IMPORTANT:</strong> Do not disconnect power. The device will reboot automatically when finished.
+    </div>
+
+    <div class="footer-nav">
+        <a href="uboot.html">Switch to Bootloader Update &rarr;</a>
+    </div>
+</div>
+</body>
 </html>

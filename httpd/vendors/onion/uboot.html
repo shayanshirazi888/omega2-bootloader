@@ -1,26 +1,47 @@
-<!DOCTYPE HTML>
-<html>
-	<head>
-		<meta charset="utf-8">
-		<title>uBoot Update - Onion Omega</title>
-		<link rel="stylesheet" href="style.css">
-	</head>
-	<body>
-		<div class="wrapper">
-			<div class="center"><img id="l" src="o.gif"></div>
-			<h1 class="center">uBoot Update</h1>
-			<p>You are about to update the <strong>uBoot bootloader</strong> on the Omega. Select the <strong>.bin</strong> file from your computer and click the <strong>Update!</strong> button.</p>
-			<form method="post" enctype="multipart/form-data"><input type="file" name="uboot"><button type="submit" class="success">Update!</button></form>
-			<div class="alert warning">
-				<strong>Warnings</strong>
-				<ul>
-					<li>Do not power off the device during update.</li>
-					<li>If everything goes well, the device will restart.</li>
-					<li>Please make sure that you choose the uBoot image specific for your device.</li>
-					<li><strong>Updating uBoot is very dangerous and may brick your device! Proceed at your own risk!</strong></li>
-				</ul>
-			</div>
-		</div>
-		<p class="center"><a href="index.html">Firmware Update</a>&nbsp;|&nbsp;<a href="art.html">ART Update</a></p>
-	</body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PGP | Bootloader Update</title>
+    <style>
+        body { background-color: #f4f7f6; background-image: linear-gradient(#e4e9f0 1px, transparent 1px), linear-gradient(90deg, #e4e9f0 1px, transparent 1px); background-size: 20px 20px; font-family: 'Segoe UI', Roboto, Helvetica, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; color: #2c3e50; }
+        .panel { background: #ffffff; padding: 45px 40px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; max-width: 480px; width: 100%; border-top: 5px solid #e67e22; box-sizing: border-box; }
+        .logo { font-size: 48px; font-weight: 900; color: #1a252f; letter-spacing: 2px; margin: 0; line-height: 1; }
+        .logo span { color: #e67e22; }
+        .sys-text { font-size: 12px; font-weight: 600; color: #7f8c8d; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; margin-bottom: 25px; }
+        .file-input { margin: 10px 0 20px 0; padding: 12px; border: 2px dashed #bdc3c7; border-radius: 6px; width: 100%; box-sizing: border-box; background: #fafbfc; color: #2c3e50; cursor: pointer; font-weight: bold; }
+        .file-input:hover { border-color: #e67e22; }
+        .btn { background-color: #e67e22; color: #ffffff; border: none; padding: 14px 25px; font-size: 16px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; transition: 0.2s; box-sizing: border-box; }
+        .btn:hover { background-color: #d35400; }
+        .warning { font-size: 13px; color: #e74c3c; margin-top: 25px; text-align: left; background: #fdf2f2; padding: 12px; border-left: 4px solid #e74c3c; border-radius: 4px; line-height: 1.5; }
+        .footer-nav { margin-top: 30px; padding-top: 15px; border-top: 1px solid #ecf0f1; font-size: 13px; font-weight: bold; }
+        .footer-nav a { color: #95a5a6; text-decoration: none; transition: 0.2s; }
+        .footer-nav a:hover { color: #2c3e50; }
+    </style>
+</head>
+<body>
+<div class="panel">
+    <div class="logo">PGP<span>.</span></div>
+    <div class="sys-text">Low-Level Bootloader Tool</div>
+    
+    <div style="text-align: left; font-size: 14px; background: #fdf8f5; padding: 12px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #fbeee6;">
+        <strong>Target:</strong> <span style="color: #e67e22;">BOOTLOADER (U-BOOT)</span>
+    </div>
+
+    <!-- فرم کاملا منطبق با استاندارد U-Boot اورجینال (name=uboot) -->
+    <form method="post" enctype="multipart/form-data">
+        <input type="file" name="uboot" class="file-input" required accept=".bin" />
+        <button type="submit" class="btn">Flash Bootloader</button>
+    </form>
+
+    <div class="warning">
+        <strong>⚠️ CRITICAL DANGER:</strong> Writing an incorrect or corrupted Bootloader image WILL brick the device permanently!
+    </div>
+
+    <div class="footer-nav">
+        <a href="index.html">&larr; Back to Firmware Update</a>
+    </div>
+</div>
+</body>
 </html>
