@@ -2272,6 +2272,10 @@ void board_init_r (gd_t *id, ulong dest_addr)
 
         } /* end of switch */
 
+        // Silencing unused warnings
+        (void)argc;
+        (void)argv;
+
         do_reset(cmdtp, 0, argc, argv);
 
     }
@@ -2286,9 +2290,10 @@ void board_init_r (gd_t *id, ulong dest_addr)
     }
     
 	/* NOTREACHED - no way out of command loop except booting */
-}
+} // <---- THE IMPORTANT CLOSING BRACE
 
-void hang (void){
+void hang (void)
+{
 	puts ("### ERROR ### Please RESET the board ###\n");
 	for (;;);
 }
