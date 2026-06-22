@@ -2232,7 +2232,7 @@ void board_init_r (gd_t *id, ulong dest_addr)
         do_bootm(cmdtp, 0, 2, argv_normal);
     }
 	/* NOTREACHED - no way out of command loop except booting */
-
+}
 
 void hang (void)
 {
