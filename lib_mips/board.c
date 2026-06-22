@@ -2034,60 +2034,52 @@ void board_init_r (gd_t *id, ulong dest_addr)
     // [PGP BOOT MENU & WEB RECOVERY LOGIC] 
     // ====================================================================
 
-    // Enter boot menu only when reset button is pressed at power-on
+    // Enter boot logic if Reset button is pressed at power-on
     if (detect_rst())
     {
+        // DECLARE VARIABLES AT THE TOP OF THE BLOCK (Fix for GCC 3.4 strict C89)
         char *argv[5];
         int argc = 3;
 
-        // Force timer to exactly 3 seconds
-        timer1 = 3;
-
-        printf("\n[PGP] Reset button detected!\n");
-        printf("You have %d seconds to select an option...\n", timer1);
-        printf("(Keep holding Reset to auto-enter Web Recovery Mode)\n\n");
-
-        OperationSelect();
-
-        BootType = 'b'; // default action
-
-        // Wait for user input (Timeout loop)
-        while (timer1 > 0)
+        // SCENARIO 2: BOTH Reset and WiFi buttons pressed
+        if (detect_wifi_btn())
         {
-            --timer1;
-            /* delay 100 * 10ms = 1 second */
-            for (i = 0; i < 100; ++i)
-            {
-                led_on();
-
-                if ((my_tmp = tstc()) != 0)
-                {    /* we got a key press	*/
-                    timer1 = 0;    /* no more delay	*/
-                    BootType = getc();
-
-                    printf("\n\rOption [%c] selected.\n", BootType);
-                    break;
-                }
-
-                udelay(30000);
-                led_off();
-                udelay(30000);
-            }
+            printf("\n[PGP] Reset AND WiFi buttons detected at Power-on!\n");
+            printf("[PGP] Entering Web Recovery Mode directly...\n\n");
+            BootType = '0'; // Web Recovery mode
         }
-
-        // ==========================================================
-        // Check if Reset is STILL held down after 3 seconds
-        // ==========================================================
-        if (BootType == 'b') 
+        else
         {
-            if (detect_rst()) 
+            // SCENARIO 1: ONLY Reset button is pressed -> Show Menu
+            printf("\n[PGP] Reset button detected!\n");
+            printf("You have %d seconds to select an option...\n\n", timer1 * 8);
+
+            OperationSelect();
+
+            BootType = 'b'; // default action
+
+            // Wait for user input (Timeout loop)
+            while (timer1 > 0)
             {
-                printf("\n[PGP] Reset button STILL held! Entering Web Recovery Mode...\n");
-                BootType = '0'; // Automatically select Web Recovery option
-            }
-            else 
-            {
-                printf("\n[PGP] Reset button released. Proceeding to normal boot...\n");
+                --timer1;
+                /* delay 100 * 10ms */
+                for (i = 0; i < 100; ++i)
+                {
+                    led_on();
+
+                    if ((my_tmp = tstc()) != 0)
+                    {    /* we got a key press	*/
+                        timer1 = 0;    /* no more delay	*/
+                        BootType = getc();
+
+                        printf("\n\rOption [%c] selected.\n", BootType);
+                        break;
+                    }
+
+                    udelay(30000);
+                    led_off();
+                    udelay(30000);
+                }
             }
         }
 
@@ -2196,7 +2188,7 @@ void board_init_r (gd_t *id, ulong dest_addr)
     }
     else
     {
-        // SCENARIO 1: No buttons pressed at power-on
+        // SCENARIO 0: No buttons pressed at power-on
         char *argv_normal[2];
         printf("\nBoot Linux from Flash NO RESET PRESSED.\n");
         sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
