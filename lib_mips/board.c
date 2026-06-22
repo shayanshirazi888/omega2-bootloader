@@ -2031,93 +2031,63 @@ void board_init_r (gd_t *id, ulong dest_addr)
 // #endif
 
     // ====================================================================
-    // [PGP BOOT MENU, WEB RECOVERY & FACTORY RESET LOGIC] 
+    // [PGP BOOT MENU & WEB RECOVERY LOGIC] 
     // ====================================================================
 
-    // SCENARIO 2 & 3: Check if Reset button is pressed at Power-On
+    // Enter boot menu only when reset button is pressed at power-on
     if (detect_rst())
     {
         char *argv[5];
         int argc = 3;
 
-        // SCENARIO 3: BOTH Reset and WiFi buttons are pressed
-        if (detect_wifi_btn())
+        // Force timer to exactly 3 seconds
+        timer1 = 3;
+
+        printf("\n[PGP] Reset button detected!\n");
+        printf("You have %d seconds to select an option...\n", timer1);
+        printf("(Keep holding Reset to auto-enter Web Recovery Mode)\n\n");
+
+        OperationSelect();
+
+        BootType = 'b'; // default action
+
+        // Wait for user input (Timeout loop)
+        while (timer1 > 0)
         {
-            int ms_count = 0;
-            printf("\n[!] Reset AND WiFi buttons detected at Power-on!\n");
-            printf("[!] Starting FACTORY RESET process. Hold for 5 seconds...\n\n");
-
-            // Count 5 seconds (50 * 100ms)
-            while (detect_rst() && detect_wifi_btn() && ms_count < 50) 
+            --timer1;
+            /* delay 100 * 10ms = 1 second */
+            for (i = 0; i < 100; ++i)
             {
-                if (ms_count % 10 == 0) { 
-                    printf("%d... ", 5 - (ms_count / 10));
-                }
-                udelay(100000); // 100ms delay
-                ms_count++;
-            }
+                led_on();
 
-            if (ms_count >= 50) {
-                // Fully held for 5 seconds
-                printf("\n\n>>> FACTORY RESET TRIGGERED! Wiping config... <<<\n");
-                setenv("factory_reset", "1");
-                saveenv();
-                
-                // Hard Hardware Reboot
-                RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
-                while(1); 
-            } else {
-                // Released early
-                printf("\n\n>>> BUTTONS RELEASED EARLY -> ABORTING & REBOOTING! <<<\n");
-                RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
-                while(1);
+                if ((my_tmp = tstc()) != 0)
+                {    /* we got a key press	*/
+                    timer1 = 0;    /* no more delay	*/
+                    BootType = getc();
+
+                    printf("\n\rOption [%c] selected.\n", BootType);
+                    break;
+                }
+
+                udelay(30000);
+                led_off();
+                udelay(30000);
             }
         }
-        else
+
+        // ==========================================================
+        // Check if Reset is STILL held down after 3 seconds
+        // ==========================================================
+        if (BootType == 'b') 
         {
-            // SCENARIO 2: ONLY Reset button is pressed
-            printf("You have %d seconds left to select a menu option...\n\n", timer1 * 8);
-
-            OperationSelect();
-
-            BootType = 'b'; // default action
-
-            // Wait for user input (Timeout loop)
-            while (timer1 > 0)
+            if (detect_rst()) 
             {
-                --timer1;
-                /* delay 100 * 10ms */
-                for (i = 0; i < 100; ++i)
-                {
-                    led_on();
-
-                    if ((my_tmp = tstc()) != 0)
-                    {    /* we got a key press	*/
-                        timer1 = 0;    /* no more delay	*/
-                        BootType = getc();
-
-                        printf("\n\rOption [%c] selected.\n", BootType);
-                        break;
-                    }
-
-                    udelay(30000);
-                    led_off();
-                    udelay(30000);
-                }
+                printf("\n[PGP] Reset button STILL held! Entering Web Recovery Mode...\n");
+                BootType = '0'; // Automatically select Web Recovery option
             }
-
-            // After timeout, check if user is STILL holding the Reset button
-            if (BootType == 'b') 
+            else 
             {
-                if (detect_rst()) 
-                {
-                    printf("\n[PGP] Reset button STILL held! Auto-selecting Web Recovery Mode...\n");
-                    BootType = '0'; // Web Recovery mode
-                }
-                else 
-                {
-                    printf("\n[PGP] Reset button released. Proceeding to normal boot...\n");
-                }
+                printf("\n[PGP] Reset button released. Proceeding to normal boot...\n");
             }
         }
 
@@ -2175,8 +2145,6 @@ void board_init_r (gd_t *id, ulong dest_addr)
                     unsigned int load_address_spi = simple_strtoul(argv[1], NULL, 16);
                     raspi_erase_write((u8 *)load_address_spi, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
                 }
-#else 
-                // FLASH LOGIC ... (Kept original logic)
 #endif 
 
                 //cp.linux
@@ -2237,10 +2205,9 @@ void board_init_r (gd_t *id, ulong dest_addr)
     }
     
 	/* NOTREACHED - no way out of command loop except booting */
-} // <---- THE IMPORTANT CLOSING BRACE
+} 
 
-void hang (void)
-{
+void hang (void){
 	puts ("### ERROR ### Please RESET the board ###\n");
 	for (;;);
 }
