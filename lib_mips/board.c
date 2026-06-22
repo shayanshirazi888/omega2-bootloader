@@ -2080,7 +2080,10 @@ void board_init_r (gd_t *id, ulong dest_addr)
                 }
             }
 
-// ====================================================================
+/*failsafe end!*/
+// #endif
+
+    // ====================================================================
     // [PGP BOOT MENU, WEB RECOVERY & FACTORY RESET LOGIC] 
     // ====================================================================
 
@@ -2281,11 +2284,11 @@ void board_init_r (gd_t *id, ulong dest_addr)
         argv_normal[1] = &addr_str[0];
         do_bootm(cmdtp, 0, 2, argv_normal);
     }
+    
 	/* NOTREACHED - no way out of command loop except booting */
 }
 
-void hang (void)
-{
+void hang (void){
 	puts ("### ERROR ### Please RESET the board ###\n");
 	for (;;);
 }
