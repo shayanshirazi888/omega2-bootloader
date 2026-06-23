@@ -2054,9 +2054,9 @@ void board_init_r (gd_t *id, ulong dest_addr)
     #define SET_PGP_LEDS(count) do { \
         u8 sr = 0xFF; /* All SR LEDs OFF (11111111) */ \
         if ((count) == 0) { \
-            RALINK_REG(0xb0000630) = (1 << 26); /* DSET0: GPIO 26 HIGH -> OFF */ \
+            RALINK_REG(0xb0000630) = (1 << 28); /* DSET0: GPIO 26 HIGH -> OFF */ \
         } else { \
-            RALINK_REG(0xb0000640) = (1 << 26); /* DCLR0: GPIO 26 LOW -> ON (LED 1) */ \
+            RALINK_REG(0xb0000640) = (1 << 28); /* DCLR0: GPIO 26 LOW -> ON (LED 1) */ \
             if ((count) >= 2) sr &= ~0x01; /* Bit 0 -> LED 2 ON */ \
             if ((count) >= 3) sr &= ~0x10; /* Bit 4 -> LED 3 ON */ \
             if ((count) >= 4) sr &= ~0x08; /* Bit 3 -> LED 4 ON */ \
@@ -2066,9 +2066,9 @@ void board_init_r (gd_t *id, ulong dest_addr)
         write_leds_595(sr); \
     } while(0)
 
-	
+
     // Ensure GPIO 26 is set as OUTPUT
-    RALINK_REG(RT2880_REG_PIODIR) |= (1 << 26);
+    RALINK_REG(RT2880_REG_PIODIR) |= (1 << 28);
     
     // Start with all LEDs OFF
     SET_PGP_LEDS(0);
@@ -2865,7 +2865,7 @@ void gpio_init(void)
 
     // Set GPIO 26 as OUTPUT for the very first LED
     val = RALINK_REG(RT2880_REG_PIODIR);
-    val |= (1 << 26);
+    val |= (1 << 28);
     RALINK_REG(RT2880_REG_PIODIR) = val;
     // =========================================================
 }
