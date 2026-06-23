@@ -2220,6 +2220,33 @@ void hang (void){	puts ("### ERROR ### Please RESET the board ###\n");
 	for (;;);
 }
 
+#define PIN_CLK   (1 << 9)  // GPIO 41 (Clock)
+#define PIN_LATCH (1 << 10) // GPIO 42 (Latch / RCLK)
+#define PIN_SER   (1 << 11) // GPIO 43 (Serial Data / SER)
+
+void write_leds_595(u8 led_data)
+{
+    int i;
+    u16 total_data;
+    
+    total_data = (led_data << 8) | 0x00; 
+
+    RALINK_REG(0xb0000644) = PIN_LATCH; 
+
+    for (i = 15; i >= 0; i--) {
+        RALINK_REG(0xb0000644) = PIN_CLK;
+        if (total_data & (1 << i)) {
+            RALINK_REG(0xb0000634) = PIN_SER; 
+        } else {
+            RALINK_REG(0xb0000644) = PIN_SER; 
+        }
+        RALINK_REG(0xb0000634) = PIN_CLK;
+    }
+
+    RALINK_REG(0xb0000634) = PIN_LATCH;
+}
+
+
 #if defined (RALINK_RW_RF_REG_FUN)
 #if defined (MT7620_ASIC_BOARD)
 #define RF_CSR_CFG      0xb0180500
