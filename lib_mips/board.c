@@ -2031,176 +2031,57 @@ void board_init_r (gd_t *id, ulong dest_addr)
 // #endif
 
     // ====================================================================
-    // [PGP BOOT MENU & WEB RECOVERY LOGIC] 
+    // [PGP WEB RECOVERY & NORMAL BOOT LOGIC] 
     // ====================================================================
 
-    // Enter boot logic if Reset button is pressed at power-on
-    if (detect_rst())
+    // Silencing unused variables to keep the compiler happy (No Warnings)
+    (void)BootType;
+    (void)confirm;
+    (void)my_tmp;
+    (void)timer1;
+    (void)i;
+
+    // Check if BOTH Reset and WiFi buttons are pressed at Power-On
+    if (detect_rst() && detect_wifi_btn())
     {
-        // DECLARE VARIABLES AT THE TOP OF THE BLOCK (Fix for GCC 3.4 strict C89)
-        char *argv[5];
-        int argc = 3;
-
-        // SCENARIO 2: BOTH Reset and WiFi buttons pressed
-        if (detect_wifi_btn())
-        {
-            printf("\n[PGP] Reset AND WiFi buttons detected at Power-on!\n");
-            printf("[PGP] Entering Web Recovery Mode directly...\n\n");
-            BootType = '0'; // Web Recovery mode
-        }
-        else
-        {
-            // SCENARIO 1: ONLY Reset button is pressed -> Show Menu
-            printf("\n[PGP] Reset button detected!\n");
-            printf("You have %d seconds to select an option...\n\n", timer1 * 8);
-
-            OperationSelect();
-
-            BootType = 'b'; // default action
-
-            // Wait for user input (Timeout loop)
-            while (timer1 > 0)
-            {
-                --timer1;
-                /* delay 100 * 10ms */
-                for (i = 0; i < 100; ++i)
-                {
-                    led_on();
-
-                    if ((my_tmp = tstc()) != 0)
-                    {    /* we got a key press	*/
-                        timer1 = 0;    /* no more delay	*/
-                        BootType = getc();
-
-                        printf("\n\rOption [%c] selected.\n", BootType);
-                        break;
-                    }
-
-                    udelay(30000);
-                    led_off();
-                    udelay(30000);
-                }
-            }
-        }
-
-        // Process Boot Menu Options
-        switch (BootType)
-        {
-            case '0':
-                eth_initialize(gd->bd);
-                NetLoopHttpd();
-                break;
-
-            case 't':
-                gpio_test(0);
-                break;
-
-            case 's':
-                gpio_test(1);
-                break;
-
-            case 'm':
-                write_macAddress();
-                break;
-
-#ifdef ONION_TFTP_FLASH_SDRAM
-            case '3':
-                printf("   \n%d: System Load Linux to SDRAM via TFTP. \n", SEL_LOAD_LINUX_SDRAM);
-                tftp_config(SEL_LOAD_LINUX_SDRAM, argv);
-                argc = 3;
-                setenv("autostart", "yes");
-                do_tftpb(cmdtp, 0, argc, argv);
-                break;
-#endif 
-
-#ifdef ONION_TFTP_FLASH
-            case '5':
-                printf("   \n%d: System Load Linux Kernel then write to Flash via TFTP. \n", SEL_LOAD_LINUX_WRITE_FLASH);
-                printf(" Warning!! Erase Linux in Flash then burn new one. Are you sure?(Y/N)\n");
-                confirm = getc();
-                if (confirm != 'y' && confirm != 'Y') {
-                    printf(" Operation terminated\n");
-                    break;
-                }
-                tftp_config(SEL_LOAD_LINUX_WRITE_FLASH, argv);
-                argc = 3;
-                setenv("autostart", "no");
-                do_tftpb(cmdtp, 0, argc, argv);
-
-#if defined (CFG_ENV_IS_IN_NAND)
-                {
-                    unsigned int load_address_nand = simple_strtoul(argv[1], NULL, 16);
-                    ranand_erase_write((u8 *)load_address_nand, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
-                }
-#elif defined (CFG_ENV_IS_IN_SPI)
-                {
-                    unsigned int load_address_spi = simple_strtoul(argv[1], NULL, 16);
-                    raspi_erase_write((u8 *)load_address_spi, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
-                }
-#endif 
-
-                //cp.linux
-                argc = 4;
-                argv[0] = "cp.linux";
-                do_mem_cp(cmdtp, 0, argc, argv);
-
-#ifdef DUAL_IMAGE_SUPPORT
-                setenv("Image1Stable", "1");
-                saveenv();
-#endif
-
-                //bootm bc050000
-                argc = 2;
-                sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
-                argv[1] = &addr_str[0];
-                do_bootm(cmdtp, 0, argc, argv);
-                break;
-#endif 
-
-#ifdef RALINK_CMDLINE
-            case '1':
-                printf("   \n%d: System Enter Boot Command Line Interface.\n", SEL_ENTER_CLI);
-                printf ("\n%s\n", version_string);
-                for (;;) {
-                    main_loop ();
-                }
-                break;
-#endif 
-
-            default:
-            {
-                char *argv_normal[2];
-                printf("\nBoot Linux from Flash.\n");
-                sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
-                argv_normal[1] = &addr_str[0];
-                do_bootm(cmdtp, 0, 2, argv_normal);
-                break;
-            }
-
-        } /* end of switch */
-
-        // Silencing unused warnings
-        (void)argc;
-        (void)argv;
-
-        do_reset(cmdtp, 0, argc, argv);
-
+        char *rst_argv[2];
+        
+        printf("\n============================================\n");
+        printf("[!] PGP SYSTEM: Reset AND WiFi buttons detected!\n");
+        printf("[!] Entering Web Recovery Mode directly...\n");
+        printf("============================================\n\n");
+        
+        eth_initialize(gd->bd);
+        NetLoopHttpd();
+        
+        // Reboot safely after exiting Web Recovery
+        rst_argv[0] = "reset";
+        rst_argv[1] = NULL;
+        do_reset(cmdtp, 0, 1, rst_argv);
     }
     else
     {
-        // SCENARIO 0: No buttons pressed at power-on
         char *argv_normal[2];
-        printf("\nBoot Linux from Flash NO RESET PRESSED.\n");
+        
+        if (detect_rst()) {
+            printf("\n[PGP] Only Reset button pressed. Ignoring (No Boot Menu).\n");
+            printf("[PGP] Proceeding to normal boot...\n");
+        } else if (detect_wifi_btn()) {
+            printf("\n[PGP] Only WiFi button pressed. Proceeding to normal boot...\n");
+        } else {
+            printf("\n[PGP] Proceeding to normal boot...\n");
+        }
+        
+        // Boot Linux
         sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
         argv_normal[1] = &addr_str[0];
         do_bootm(cmdtp, 0, 2, argv_normal);
     }
     
 	/* NOTREACHED - no way out of command loop except booting */
-} 
+}
 
-void hang (void){
-	puts ("### ERROR ### Please RESET the board ###\n");
+void hang (void){	puts ("### ERROR ### Please RESET the board ###\n");
 	for (;;);
 }
 
