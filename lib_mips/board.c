@@ -134,6 +134,9 @@ void gpio_init(void);
 void led_on(void);
 void led_off(void);
 
+// [PGP] LED Shift Register Declaration
+void write_leds_595(u8 led_data);
+
 // Added by zh@onion.io
 int detect_rst(void); // rename wps button to rst
 int detect_wifi_btn(void);
