@@ -2031,25 +2031,45 @@ void board_init_r (gd_t *id, ulong dest_addr)
 // #endif
 
     // ====================================================================
-    // [PGP BOOT MENU, WEB RECOVERY & SMART FACTORY RESET LOGIC] 
+    // [PGP SMART RECOVERY & FACTORY RESET LOGIC] 
     // ====================================================================
 
-    // SCENARIO 2 & 3: Check if Reset button is pressed at Power-On
+    // Silencing unused variables to keep the compiler happy (No Warnings)
+    (void)BootType;
+    (void)confirm;
+    (void)my_tmp;
+    (void)timer1;
+    (void)i;
+
     if (detect_rst())
     {
-        // DECLARE VARIABLES AT THE TOP OF THE BLOCK (Fix for GCC 3.4 strict C89)
-        char *argv[5];
-        int argc = 3;
-
-        // SCENARIO 3: BOTH Reset and WiFi buttons are pressed -> SMART FACTORY RESET
         if (detect_wifi_btn())
         {
+            // --- SCENARIO 2: RESET + WIFI -> WEB RECOVERY ---
+            printf("\n============================================\n");
+            printf("[!] PGP SYSTEM: Reset AND WiFi buttons detected!\n");
+            printf("[!] Entering Web Recovery Mode directly...\n");
+            printf("============================================\n\n");
+            
+            eth_initialize(gd->bd);
+            NetLoopHttpd();
+            
+            // Hard reboot if user exits Web Recovery
+            printf(">>> REBOOTING NOW... <<<\n");
+            RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
+            while(1);
+        }
+        else
+        {
+            // --- SCENARIO 1: RESET ONLY -> 5 SECONDS -> SMART FACTORY RESET ---
             int ms_count = 0;
-            printf("\n[!] Reset AND WiFi buttons detected at Power-on!\n");
-            printf("[!] Starting SMART FACTORY RESET process. Hold for 5 seconds...\n\n");
+            printf("\n============================================\n");
+            printf("[!] PGP SYSTEM: Reset button detected!\n");
+            printf("[!] Hold for 5 seconds to FACTORY RESET...\n");
+            printf("============================================\n\n");
 
             // Count 5 seconds (50 * 100ms)
-            while (detect_rst() && detect_wifi_btn() && ms_count < 50) 
+            while (detect_rst() && ms_count < 50) 
             {
                 if (ms_count % 10 == 0) { 
                     printf("%d... ", 5 - (ms_count / 10));
@@ -2058,8 +2078,9 @@ void board_init_r (gd_t *id, ulong dest_addr)
                 ms_count++;
             }
 
-            if (ms_count >= 50) {
-                // --- SMART FACTORY RESET LOGIC (SQUASHFS SCAN) ---
+            if (ms_count >= 50) 
+            {
+                // Fully held for 5 seconds -> SMART FACTORY RESET
                 extern int raspi_erase(unsigned int offs, int len);
                 image_header_t *hdr = (image_header_t *)CFG_KERN_ADDR;
                 unsigned char *scan_start = (unsigned char *)CFG_KERN_ADDR;
@@ -2070,16 +2091,16 @@ void board_init_r (gd_t *id, ulong dest_addr)
                 printf("\n\n>>> FACTORY RESET TRIGGERED! <<<\n");
                 printf("[PGP] Initiating smart partition detection...\n");
 
-                // Skip the kernel payload (uImage header + size) to save time
+                // Skip the kernel payload
                 if (ntohl(hdr->ih_magic) == IH_MAGIC) {
                     scan_start += sizeof(image_header_t) + ntohl(hdr->ih_size);
                 } else {
-                    scan_start += 0x100000; // Fallback skip 1MB if header is corrupted
+                    scan_start += 0x100000; 
                 }
 
-                // Scan for SquashFS magic "hsqs" (0x68, 0x73, 0x71, 0x73)
+                // Scan for SquashFS magic "hsqs"
                 printf("[PGP] Scanning for SquashFS magic...\n");
-                for (p = scan_start; p < scan_start + 0x400000; p++) { // Scan up to 4MB ahead
+                for (p = scan_start; p < scan_start + 0x400000; p++) {
                     if (p[0] == 'h' && p[1] == 's' && p[2] == 'q' && p[3] == 's') {
                         sqfs_start = (unsigned int)p;
                         break;
@@ -2087,20 +2108,19 @@ void board_init_r (gd_t *id, ulong dest_addr)
                 }
 
                 if (sqfs_start > 0) {
-                    // Extract 'bytes_used' from SquashFS Superblock (Offset 40)
+                    // Extract 'bytes_used'
                     bytes_used = p[40] | (p[41] << 8) | (p[42] << 16) | (p[43] << 24);
                     printf("[PGP] SquashFS found at 0x%08X (Size: %d bytes)\n", sqfs_start, bytes_used);
 
-                    // Calculate rootfs_data start (align up to next 64KB Erase Block)
+                    // Calculate rootfs_data start
                     rootfs_data_start = sqfs_start + bytes_used;
                     rootfs_data_start = (rootfs_data_start + 0xFFFF) & ~0xFFFF;
 
-                    // Calculate offsets and lengths based on actual Flash Size
+                    // Calculate lengths
                     flash_size = gd->bd->bi_flashsize;
                     rootfs_data_offset = rootfs_data_start - CFG_FLASH_BASE;
                     rootfs_data_len = flash_size - rootfs_data_offset;
 
-                    // Final Safety Check (Ensure we don't erase the kernel or bootloader)
                     if (rootfs_data_offset > 0x100000 && rootfs_data_offset < flash_size) {
                         printf("[PGP] SAFE TO ERASE! Wiping User Data from offset 0x%08X (Len: 0x%08X)...\n", 
                                rootfs_data_offset, rootfs_data_len);
@@ -2123,149 +2143,19 @@ void board_init_r (gd_t *id, ulong dest_addr)
                 printf(">>> REBOOTING NOW... <<<\n");
                 RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
                 while(1); 
-            } else {
-                printf("\n\n>>> BUTTONS RELEASED EARLY -> ABORTING & REBOOTING! <<<\n");
+            } 
+            else 
+            {
+                // Released early
+                printf("\n\n>>> BUTTON RELEASED EARLY -> ABORTING & REBOOTING! <<<\n");
                 RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
                 while(1);
             }
         }
-        else
-        {
-            // SCENARIO 2: ONLY Reset button is pressed -> Show Menu & Web Recovery Fallback
-            timer1 = 5; // Set timer to 5 seconds
-            printf("You have %d seconds left to select a menu option...\n\n", timer1);
-
-            OperationSelect();
-
-            BootType = 'b'; // default action
-
-            while (timer1 > 0)
-            {
-                --timer1;
-                for (i = 0; i < 100; ++i)
-                {
-                    led_on();
-                    if ((my_tmp = tstc()) != 0)
-                    {    
-                        timer1 = 0;    
-                        BootType = getc();
-                        printf("\n\rOption [%c] selected.\n", BootType);
-                        break;
-                    }
-                    udelay(30000);
-                    led_off();
-                    udelay(30000);
-                }
-            }
-
-            if (BootType == 'b') 
-            {
-                if (detect_rst()) 
-                {
-                    printf("\n[PGP] Reset button STILL held! Auto-selecting Web Recovery Mode...\n");
-                    BootType = '0'; // Web Recovery mode
-                }
-                else 
-                {
-                    printf("\n[PGP] Reset button released. Proceeding to normal boot...\n");
-                }
-            }
-        }
-
-        // Process Boot Menu Options
-        switch (BootType)
-        {
-            case '0':
-                eth_initialize(gd->bd);
-                NetLoopHttpd();
-                break;
-            case 't':
-                gpio_test(0);
-                break;
-            case 's':
-                gpio_test(1);
-                break;
-            case 'm':
-                write_macAddress();
-                break;
-#ifdef ONION_TFTP_FLASH_SDRAM
-            case '3':
-                printf("   \n%d: System Load Linux to SDRAM via TFTP. \n", SEL_LOAD_LINUX_SDRAM);
-                tftp_config(SEL_LOAD_LINUX_SDRAM, argv);
-                argc = 3;
-                setenv("autostart", "yes");
-                do_tftpb(cmdtp, 0, argc, argv);
-                break;
-#endif 
-#ifdef ONION_TFTP_FLASH
-            case '5':
-                printf("   \n%d: System Load Linux Kernel then write to Flash via TFTP. \n", SEL_LOAD_LINUX_WRITE_FLASH);
-                printf(" Warning!! Erase Linux in Flash then burn new one. Are you sure?(Y/N)\n");
-                confirm = getc();
-                if (confirm != 'y' && confirm != 'Y') {
-                    printf(" Operation terminated\n");
-                    break;
-                }
-                tftp_config(SEL_LOAD_LINUX_WRITE_FLASH, argv);
-                argc = 3;
-                setenv("autostart", "no");
-                do_tftpb(cmdtp, 0, argc, argv);
-#if defined (CFG_ENV_IS_IN_NAND)
-                {
-                    unsigned int load_address_nand = simple_strtoul(argv[1], NULL, 16);
-                    ranand_erase_write((u8 *)load_address_nand, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
-                }
-#elif defined (CFG_ENV_IS_IN_SPI)
-                {
-                    unsigned int load_address_spi = simple_strtoul(argv[1], NULL, 16);
-                    raspi_erase_write((u8 *)load_address_spi, CFG_KERN_ADDR-CFG_FLASH_BASE, NetBootFileXferSize);
-                }
-#endif 
-                argc = 4;
-                argv[0] = "cp.linux";
-                do_mem_cp(cmdtp, 0, argc, argv);
-#ifdef DUAL_IMAGE_SUPPORT
-                setenv("Image1Stable", "1");
-                saveenv();
-#endif
-                argc = 2;
-                sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
-                argv[1] = &addr_str[0];
-                do_bootm(cmdtp, 0, argc, argv);
-                break;
-#endif 
-#ifdef RALINK_CMDLINE
-            case '1':
-                printf("   \n%d: System Enter Boot Command Line Interface.\n", SEL_ENTER_CLI);
-                printf ("\n%s\n", version_string);
-                for (;;) {
-                    main_loop ();
-                }
-                break;
-#endif 
-            default:
-            {
-                char *argv_normal[2];
-                printf("\nBoot Linux from Flash.\n");
-                sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
-                argv_normal[1] = &addr_str[0];
-                do_bootm(cmdtp, 0, 2, argv_normal);
-                break;
-            }
-        } /* end of switch */
-
-        // Avoid warnings for unused variables
-        (void)argc;
-        (void)argv;
-        
-        // Hard reboot if we exit menu somehow without booting
-        RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
-        while(1);
-
     }
     else
     {
-        // SCENARIO 1: No buttons pressed at power-on
+        // --- SCENARIO 3: NORMAL BOOT ---
         char *argv_normal[2];
         printf("\nBoot Linux from Flash NO RESET PRESSED.\n");
         sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
@@ -2274,7 +2164,7 @@ void board_init_r (gd_t *id, ulong dest_addr)
     }
     
 	/* NOTREACHED - no way out of command loop except booting */
-} 
+}
 
 void hang (void){	puts ("### ERROR ### Please RESET the board ###\n");
 	for (;;);
@@ -2862,7 +2752,6 @@ void gpio_init(void)
 // Set SD_MODE to GPIO mode (00 is the real GPIO mode in MT7688)
     val = RALINK_REG(RT2880_SYS_CNTL_BASE+0x60);
     val &= ~(3<<10); // Clear bits 11:10 (Set to 00 -> GPIO Mode)
-    // val |= (1<<10);  <-- این خط را حتماً کامنت یا پاک کنید!
     RALINK_REG(RT2880_SYS_CNTL_BASE+0x60) = val;
 
 // Set GPIO 25 and GPIO 29 direction as INPUT
