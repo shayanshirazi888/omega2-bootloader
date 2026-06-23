@@ -2854,6 +2854,23 @@ void gpio_init(void)
 	raspi_read(macbuf, CFG_FACTORY_ADDR - CFG_FLASH_BASE + 0x04, 6);
 	printf("wifi mac address = %02X%02X%02X%02X%02X%02X.\n",
       macbuf[0],macbuf[1],macbuf[2],macbuf[3],macbuf[4],macbuf[5]);
+
+	// =========================================================
+    // [PGP] SHIFT REGISTER & LED PINS CONFIGURATION
+    // =========================================================
+    // Set GPIO 40, 41, 42, 43 as OUTPUT pins for Shift Register
+    val = RALINK_REG(RT2880_REG_PIODIR + 0x04);
+    val |= (0x0F << 8); // Bits 8, 9, 10, 11 (which map to GPIO 40, 41, 42, 43)
+    RALINK_REG(RT2880_REG_PIODIR + 0x04) = val;
+
+    // Set SRCLR (GPIO 40) to HIGH so the shift register is active and NOT cleared
+    RALINK_REG(0xb0000634) = (1 << 8); // Set GPIO 40 High
+
+    // Set GPIO 26 as OUTPUT for the very first LED
+    val = RALINK_REG(RT2880_REG_PIODIR);
+    val |= (1 << 26);
+    RALINK_REG(RT2880_REG_PIODIR) = val;
+    // =========================================================
 }
 
 void led_on( void )
