@@ -2049,9 +2049,7 @@ void board_init_r (gd_t *id, ulong dest_addr)
 
     // ----------------------------------------------------------------
     // LED HELPER MACRO (Active Low Logic: 0 = ON, 1 = OFF)
-    // count = 0: All OFF
-    // count = 1: LED 1 ON (GPIO 26)
-    // count = 2 to 6: LED 1 + Shift Register LEDs ON (Q0 to Q4)
+    // Hardware Mapping: Bit0=LED2, Bit4=LED3, Bit3=LED4, Bit2=LED5, Bit1=LED6
     // ----------------------------------------------------------------
     #define SET_PGP_LEDS(count) do { \
         u32 v = RALINK_REG(0xb0000620); \
@@ -2059,12 +2057,12 @@ void board_init_r (gd_t *id, ulong dest_addr)
         if ((count) == 0) { \
             v |= (1 << 26); /* GPIO 26 HIGH -> OFF */ \
         } else { \
-            v &= ~(1 << 26); /* GPIO 26 LOW -> ON */ \
-            if ((count) >= 2) sr &= ~0x01; /* Q0 ON */ \
-            if ((count) >= 3) sr &= ~0x03; /* Q0, Q1 ON */ \
-            if ((count) >= 4) sr &= ~0x07; /* Q0, Q1, Q2 ON */ \
-            if ((count) >= 5) sr &= ~0x0F; /* Q0, Q1, Q2, Q3 ON */ \
-            if ((count) >= 6) sr &= ~0x1F; /* Q0, Q1, Q2, Q3, Q4 ON */ \
+            v &= ~(1 << 26); /* GPIO 26 LOW -> ON (LED 1) */ \
+            if ((count) >= 2) sr &= ~0x01; /* Bit 0 -> LED 2 ON */ \
+            if ((count) >= 3) sr &= ~0x10; /* Bit 4 -> LED 3 ON */ \
+            if ((count) >= 4) sr &= ~0x08; /* Bit 3 -> LED 4 ON */ \
+            if ((count) >= 5) sr &= ~0x04; /* Bit 2 -> LED 5 ON */ \
+            if ((count) >= 6) sr &= ~0x02; /* Bit 1 -> LED 6 ON */ \
         } \
         RALINK_REG(0xb0000620) = v; \
         write_leds_595(sr); \
