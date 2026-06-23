@@ -2047,27 +2047,26 @@ void board_init_r (gd_t *id, ulong dest_addr)
     (void)timer1;
     (void)i;
 
-    // ----------------------------------------------------------------
+// ----------------------------------------------------------------
     // LED HELPER MACRO (Active Low Logic: 0 = ON, 1 = OFF)
     // Hardware Mapping: Bit0=LED2, Bit4=LED3, Bit3=LED4, Bit2=LED5, Bit1=LED6
     // ----------------------------------------------------------------
     #define SET_PGP_LEDS(count) do { \
-        u32 v = RALINK_REG(0xb0000620); \
         u8 sr = 0xFF; /* All SR LEDs OFF (11111111) */ \
         if ((count) == 0) { \
-            v |= (1 << 26); /* GPIO 26 HIGH -> OFF */ \
+            RALINK_REG(0xb0000630) = (1 << 26); /* DSET0: GPIO 26 HIGH -> OFF */ \
         } else { \
-            v &= ~(1 << 26); /* GPIO 26 LOW -> ON (LED 1) */ \
+            RALINK_REG(0xb0000640) = (1 << 26); /* DCLR0: GPIO 26 LOW -> ON (LED 1) */ \
             if ((count) >= 2) sr &= ~0x01; /* Bit 0 -> LED 2 ON */ \
             if ((count) >= 3) sr &= ~0x10; /* Bit 4 -> LED 3 ON */ \
             if ((count) >= 4) sr &= ~0x08; /* Bit 3 -> LED 4 ON */ \
             if ((count) >= 5) sr &= ~0x04; /* Bit 2 -> LED 5 ON */ \
             if ((count) >= 6) sr &= ~0x02; /* Bit 1 -> LED 6 ON */ \
         } \
-        RALINK_REG(0xb0000620) = v; \
         write_leds_595(sr); \
     } while(0)
 
+	
     // Ensure GPIO 26 is set as OUTPUT
     RALINK_REG(RT2880_REG_PIODIR) |= (1 << 26);
     
