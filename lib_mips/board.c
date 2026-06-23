@@ -2027,25 +2027,59 @@ void board_init_r (gd_t *id, ulong dest_addr)
 
 // #define PROGRESS_SCALE 0
 
+//--------------------------------------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------------------------------------------------------
+
 /*failsafe end!*/
 // #endif
 
     // ====================================================================
-    // [PGP SMART RECOVERY & FACTORY RESET LOGIC] 
+    // [PGP SMART RECOVERY, FACTORY RESET & LED PROGRESS LOGIC] 
     // ====================================================================
 
-    // Silencing unused variables to keep the compiler happy (No Warnings)
+    // Silencing unused variables to keep compiler happy
     (void)BootType;
     (void)confirm;
     (void)my_tmp;
     (void)timer1;
     (void)i;
 
+    // ----------------------------------------------------------------
+    // LED HELPER MACRO (Active Low Logic: 0 = ON, 1 = OFF)
+    // count = 0: All OFF
+    // count = 1: LED 1 ON (GPIO 26)
+    // count = 2 to 6: LED 1 + Shift Register LEDs ON (Q0 to Q4)
+    // ----------------------------------------------------------------
+    #define SET_PGP_LEDS(count) do { \
+        u32 v = RALINK_REG(0xb0000620); \
+        u8 sr = 0xFF; /* All SR LEDs OFF (11111111) */ \
+        if ((count) == 0) { \
+            v |= (1 << 26); /* GPIO 26 HIGH -> OFF */ \
+        } else { \
+            v &= ~(1 << 26); /* GPIO 26 LOW -> ON */ \
+            if ((count) >= 2) sr &= ~0x01; /* Q0 ON */ \
+            if ((count) >= 3) sr &= ~0x03; /* Q0, Q1 ON */ \
+            if ((count) >= 4) sr &= ~0x07; /* Q0, Q1, Q2 ON */ \
+            if ((count) >= 5) sr &= ~0x0F; /* Q0, Q1, Q2, Q3 ON */ \
+            if ((count) >= 6) sr &= ~0x1F; /* Q0, Q1, Q2, Q3, Q4 ON */ \
+        } \
+        RALINK_REG(0xb0000620) = v; \
+        write_leds_595(sr); \
+    } while(0)
+
+    // Ensure GPIO 26 is set as OUTPUT
+    RALINK_REG(RT2880_REG_PIODIR) |= (1 << 26);
+    
+    // Start with all LEDs OFF
+    SET_PGP_LEDS(0);
+
     if (detect_rst())
     {
         if (detect_wifi_btn())
         {
             // --- SCENARIO 2: RESET + WIFI -> WEB RECOVERY ---
+            SET_PGP_LEDS(6); // Turn ON all 6 LEDs instantly
+            
             printf("\n============================================\n");
             printf("[!] PGP SYSTEM: Reset AND WiFi buttons detected!\n");
             printf("[!] Entering Web Recovery Mode directly...\n");
@@ -2055,6 +2089,7 @@ void board_init_r (gd_t *id, ulong dest_addr)
             NetLoopHttpd();
             
             // Hard reboot if user exits Web Recovery
+            SET_PGP_LEDS(0);
             printf(">>> REBOOTING NOW... <<<\n");
             RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
             while(1);
@@ -2063,6 +2098,8 @@ void board_init_r (gd_t *id, ulong dest_addr)
         {
             // --- SCENARIO 1: RESET ONLY -> 5 SECONDS -> SMART FACTORY RESET ---
             int ms_count = 0;
+            int b; // For blinking loop
+            
             printf("\n============================================\n");
             printf("[!] PGP SYSTEM: Reset button detected!\n");
             printf("[!] Hold for 5 seconds to FACTORY RESET...\n");
@@ -2072,7 +2109,11 @@ void board_init_r (gd_t *id, ulong dest_addr)
             while (detect_rst() && ms_count < 50) 
             {
                 if (ms_count % 10 == 0) { 
-                    printf("%d... ", 5 - (ms_count / 10));
+                    int sec = ms_count / 10;
+                    printf("%d... ", 5 - sec);
+                    
+                    // Update LEDs based on current second (1 to 6)
+                    SET_PGP_LEDS(sec + 1); 
                 }
                 udelay(100000); // 100ms delay
                 ms_count++;
@@ -2081,6 +2122,14 @@ void board_init_r (gd_t *id, ulong dest_addr)
             if (ms_count >= 50) 
             {
                 // Fully held for 5 seconds -> SMART FACTORY RESET
+                printf("\n\n>>> FACTORY RESET TRIGGERED! <<<\n");
+                
+                // Blink ALL LEDs 5 times rapidly to confirm!
+                for (b = 0; b < 5; b++) {
+                    SET_PGP_LEDS(0); udelay(100000);
+                    SET_PGP_LEDS(6); udelay(100000);
+                }
+
                 extern int raspi_erase(unsigned int offs, int len);
                 image_header_t *hdr = (image_header_t *)CFG_KERN_ADDR;
                 unsigned char *scan_start = (unsigned char *)CFG_KERN_ADDR;
@@ -2088,7 +2137,6 @@ void board_init_r (gd_t *id, ulong dest_addr)
                 unsigned int sqfs_start = 0;
                 unsigned int bytes_used, rootfs_data_start, rootfs_data_offset, rootfs_data_len, flash_size;
 
-                printf("\n\n>>> FACTORY RESET TRIGGERED! <<<\n");
                 printf("[PGP] Initiating smart partition detection...\n");
 
                 // Skip the kernel payload
@@ -2108,15 +2156,12 @@ void board_init_r (gd_t *id, ulong dest_addr)
                 }
 
                 if (sqfs_start > 0) {
-                    // Extract 'bytes_used'
                     bytes_used = p[40] | (p[41] << 8) | (p[42] << 16) | (p[43] << 24);
                     printf("[PGP] SquashFS found at 0x%08X (Size: %d bytes)\n", sqfs_start, bytes_used);
 
-                    // Calculate rootfs_data start
                     rootfs_data_start = sqfs_start + bytes_used;
                     rootfs_data_start = (rootfs_data_start + 0xFFFF) & ~0xFFFF;
 
-                    // Calculate lengths
                     flash_size = gd->bd->bi_flashsize;
                     rootfs_data_offset = rootfs_data_start - CFG_FLASH_BASE;
                     rootfs_data_len = flash_size - rootfs_data_offset;
@@ -2140,13 +2185,15 @@ void board_init_r (gd_t *id, ulong dest_addr)
                 }
 
                 // Hard Hardware Reboot
+                SET_PGP_LEDS(0);
                 printf(">>> REBOOTING NOW... <<<\n");
                 RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
                 while(1); 
             } 
             else 
             {
-                // Released early
+                // Released early -> Turn off LEDs & Reboot
+                SET_PGP_LEDS(0);
                 printf("\n\n>>> BUTTON RELEASED EARLY -> ABORTING & REBOOTING! <<<\n");
                 RALINK_REG(RT2880_RSTCTRL_REG) |= 1;
                 while(1);
@@ -2155,7 +2202,7 @@ void board_init_r (gd_t *id, ulong dest_addr)
     }
     else
     {
-        // --- SCENARIO 3: NORMAL BOOT ---
+        // --- SCENARIO 0: NORMAL BOOT ---
         char *argv_normal[2];
         printf("\nBoot Linux from Flash NO RESET PRESSED.\n");
         sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
@@ -2164,7 +2211,10 @@ void board_init_r (gd_t *id, ulong dest_addr)
     }
     
 	/* NOTREACHED - no way out of command loop except booting */
-}
+} 
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------------------------------------
 
 void hang (void){	puts ("### ERROR ### Please RESET the board ###\n");
 	for (;;);
