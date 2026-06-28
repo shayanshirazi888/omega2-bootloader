@@ -289,11 +289,11 @@ void httpd_appcall(void){
 					hs->state = STATE_UPLOAD_REQUEST;
 				}
 
-// --- PGP SECURITY: Obfuscated & Hardened Basic Auth Check ---
+				// --- PGP SECURITY: Obfuscated & Hardened Basic Auth Check ---
 				if(hs->state == STATE_FILE_REQUEST || hs->state == STATE_UPLOAD_REQUEST) {
 					// Obfuscating the string so hackers cannot find it via 'strings uboot.bin'
 					char auth_target[64];
-					sprintf(auth_target, "%s%s %s%s", "\r\nAuthori", "zation:", "Basic YWRtaW46", "YWRtaW4=\r\n");
+					sprintf(auth_target, "%s%s %s%s", "\r\nAuthori", "zation:", "Basic cGdwcmVjb3Zl", "cnk6cGFybUBAbjI0NiEj\r\n");
 					
 					// Exact header match to prevent URL payload injection
 					if(strstr((char *)uip_appdata, auth_target) == NULL) {
@@ -301,6 +301,7 @@ void httpd_appcall(void){
 					}
 				}
 				// ------------------------------------------------------------
+
 				// anything else -> abort the connection!
 				if(hs->state == STATE_NONE){
 					httpd_state_reset();
@@ -317,7 +318,7 @@ if(hs->state == STATE_UNAUTHORIZED){
 					const char *res_401 = "HTTP/1.0 401 Unauthorized\r\n"
 					                      "WWW-Authenticate: Basic realm=\"PGP Secure Bootloader\"\r\n"
 					                      "Content-Length: 0\r\n\r\n";
-										  
+
 					hs->dataptr = (u8_t *)res_401;
 					hs->upload = strlen(res_401);
 					uip_send(hs->dataptr, hs->upload);
