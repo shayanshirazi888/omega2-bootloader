@@ -2047,41 +2047,26 @@ void board_init_r (gd_t *id, ulong dest_addr)
     (void)timer1;
     (void)i;
 
-	// // ----------------------------------------------------------------
-    // // LED HELPER MACRO (Active Low Logic: 0 = ON, 1 = OFF)
-    // // Hardware Mapping: First LED = GPIO 26, SR: Bit0=LED2, Bit4=LED3, Bit3=LED4, Bit2=LED5, Bit1=LED6
-    // // ----------------------------------------------------------------
-    // #define SET_PGP_LEDS(count) do { \
-    //     u8 sr = 0xFF; /* All SR LEDs OFF (11111111) */ \
-    //     if ((count) == 0) { \
-    //         RALINK_REG(0xb0000630) = (1 << 26); /* DSET0: GPIO 26 HIGH -> OFF */ \
-    //     } else { \
-    //         RALINK_REG(0xb0000640) = (1 << 26); /* DCLR0: GPIO 26 LOW -> ON (LED 1) */ \
-    //         if ((count) >= 2) sr &= ~0x01; /* Bit 0 -> LED 2 ON */ \
-    //         if ((count) >= 3) sr &= ~0x10; /* Bit 4 -> LED 3 ON */ \
-    //         if ((count) >= 4) sr &= ~0x08; /* Bit 3 -> LED 4 ON */ \
-    //         if ((count) >= 5) sr &= ~0x04; /* Bit 2 -> LED 5 ON */ \
-    //         if ((count) >= 6) sr &= ~0x02; /* Bit 1 -> LED 6 ON */ \
-    //     } \
-    //     write_leds_595(sr); \
-    // } while(0)
-
 // ----------------------------------------------------------------
-    // TEMPORARY MACRO FOR HARDWARE TESTING (IGNORES GPIO 26)
+    // LED HELPER MACRO (Active Low Logic: 0 = ON, 1 = OFF)
+    // Hardware Mapping: First LED = GPIO 26, SR: Bit0=LED2, Bit4=LED3, Bit3=LED4, Bit2=LED5, Bit1=LED6
     // ----------------------------------------------------------------
     #define SET_PGP_LEDS(count) do { \
-        u8 sr = 0xFF; \
-        if ((count) > 0) { \
-            if ((count) >= 2) sr &= ~0x01; \
-            if ((count) >= 3) sr &= ~0x10; \
-            if ((count) >= 4) sr &= ~0x08; \
-            if ((count) >= 5) sr &= ~0x04; \
-            if ((count) >= 6) sr &= ~0x02; \
+        u8 sr = 0xFF; /* All SR LEDs OFF (11111111) */ \
+        if ((count) == 0) { \
+            RALINK_REG(0xb0000630) = (1 << 26); /* DSET0: GPIO 26 HIGH -> OFF */ \
+        } else { \
+            RALINK_REG(0xb0000640) = (1 << 26); /* DCLR0: GPIO 26 LOW -> ON (LED 1) */ \
+            if ((count) >= 2) sr &= ~0x01; /* Bit 0 -> LED 2 ON */ \
+            if ((count) >= 3) sr &= ~0x10; /* Bit 4 -> LED 3 ON */ \
+            if ((count) >= 4) sr &= ~0x08; /* Bit 3 -> LED 4 ON */ \
+            if ((count) >= 5) sr &= ~0x04; /* Bit 2 -> LED 5 ON */ \
+            if ((count) >= 6) sr &= ~0x02; /* Bit 1 -> LED 6 ON */ \
         } \
         write_leds_595(sr); \
     } while(0)
 
-
+	
     // Start with all LEDs OFF
     SET_PGP_LEDS(0);
 	
@@ -2844,11 +2829,12 @@ void gpio_init(void)
 	RALINK_REG(RT2880_REG_PIODIR+0x04)=val;
 
 
-// Set SD_MODE to GPIO mode (00 is the real GPIO mode in MT7688)
+// Set SD_MODE to GPIO mode (01 is the real GPIO mode in MT7688)
     val = RALINK_REG(RT2880_SYS_CNTL_BASE+0x60);
-    val &= ~(3<<10); // Clear bits 11:10 (Set to 00 -> GPIO Mode)
+    val &= ~(3<<10); // Clear bits 11:10
+    val |= (1<<10);  // Set bits 11:10 to 01 (GPIO mode)
     RALINK_REG(RT2880_SYS_CNTL_BASE+0x60) = val;
-
+	
 // Set GPIO 25 and GPIO 29 direction as INPUT
     val = RALINK_REG(RT2880_REG_PIODIR);
     val &= ~((1<<25) | (1<<29)); 
@@ -2870,27 +2856,6 @@ void gpio_init(void)
 	printf("wifi mac address = %02X%02X%02X%02X%02X%02X.\n",
       macbuf[0],macbuf[1],macbuf[2],macbuf[3],macbuf[4],macbuf[5]);
 
-//   // =================================================
-//   // [PGP] CONVERT ANALOG EPHY P4 TO DIGITAL GPIO 26
-//   // =========================================================
-//   val = RALINK_REG(RT2880_SYS_CNTL_BASE + 0x3C); // AGPIO_CFG Register
-//   val |= (1 << 20); // Set bit 20 to disable EPHY Port 4 and enable Digital GPIO 26
-//   RALINK_REG(RT2880_SYS_CNTL_BASE + 0x3C) = val;
-
-//   // Set GPIO 26 Direction to OUTPUT
-//   val = RALINK_REG(RT2880_REG_PIODIR);
-//   val |= (1 << 26);
-//   RALINK_REG(RT2880_REG_PIODIR) = val;
-
-//   // Set Shift Register Pins (40, 41, 42, 43) to OUTPUT
-//   val = RALINK_REG(RT2880_REG_PIODIR + 0x04);
-//   val |= (0x0F << 8); 
-//   RALINK_REG(RT2880_REG_PIODIR + 0x04) = val;
-
-//   // Power UP Shift Register (SRCLR = High)
-//   RALINK_REG(0xb0000634) = (1 << 8); 
-//   // =========================================================
-
 // =========================================================
   // [PGP] CONVERT ANALOG EPHY P4 TO DIGITAL GPIO 26
   // =========================================================
@@ -2898,10 +2863,13 @@ void gpio_init(void)
   val |= (1 << 20); // Set bit 20 to disable EPHY Port 4 and enable Digital GPIO 26
   RALINK_REG(RT2880_SYS_CNTL_BASE + 0x3C) = val;
 
-  // Set GPIO 26 Direction to INPUT (0) FOR TESTING!
+  // Set GPIO 26 Direction to OUTPUT
   val = RALINK_REG(RT2880_REG_PIODIR);
-  val &= ~(1 << 26);  // <---- این خط تغییر کرد تا پایه ورودی شود
+  val |= (1 << 26);
   RALINK_REG(RT2880_REG_PIODIR) = val;
+
+  // Turn OFF GPIO 26 initially (DSET0 sets it HIGH -> LED OFF)
+  RALINK_REG(0xb0000630) = (1 << 26);
 
   // Set Shift Register Pins (40, 41, 42, 43) to OUTPUT
   val = RALINK_REG(RT2880_REG_PIODIR + 0x04);
@@ -2911,7 +2879,6 @@ void gpio_init(void)
   // Power UP Shift Register (SRCLR = High)
   RALINK_REG(0xb0000634) = (1 << 8); 
   // =========================================================
-
 
 }
 
