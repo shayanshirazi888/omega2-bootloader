@@ -2829,13 +2829,13 @@ void gpio_init(void)
 	RALINK_REG(RT2880_REG_PIODIR+0x04)=val;
 
 
-// Set SD_MODE to GPIO mode (01 is the real GPIO mode in MT7688)
+  // Set SD_MODE to GPIO mode (01 is the real GPIO mode in MT7688)
     val = RALINK_REG(RT2880_SYS_CNTL_BASE+0x60);
     val &= ~(3<<10); // Clear bits 11:10
     val |= (1<<10);  // Set bits 11:10 to 01 (GPIO mode)
     RALINK_REG(RT2880_SYS_CNTL_BASE+0x60) = val;
 	
-// Set GPIO 25 and GPIO 29 direction as INPUT
+  // Set GPIO 25 and GPIO 29 direction as INPUT
     val = RALINK_REG(RT2880_REG_PIODIR);
     val &= ~((1<<25) | (1<<29)); 
     RALINK_REG(RT2880_REG_PIODIR) = val;
@@ -2856,7 +2856,7 @@ void gpio_init(void)
 	printf("wifi mac address = %02X%02X%02X%02X%02X%02X.\n",
       macbuf[0],macbuf[1],macbuf[2],macbuf[3],macbuf[4],macbuf[5]);
 
-// =========================================================
+  // =========================================================
   // [PGP] CONVERT ANALOG EPHY P4 TO DIGITAL GPIO 26
   // =========================================================
   val = RALINK_REG(RT2880_SYS_CNTL_BASE + 0x3C); // AGPIO_CFG Register
@@ -2879,6 +2879,31 @@ void gpio_init(void)
   // Power UP Shift Register (SRCLR = High)
   RALINK_REG(0xb0000634) = (1 << 8); 
   // =========================================================
+
+	// =========================================================
+	// PGP: HARDWARE RESET VIA GPIO 36 (1s LOW -> HIGH)
+	// =========================================================
+
+	// 0. Ensure GPIO 36 (PERST_N pin) is in GPIO mode (Bit 16 in GPIO1_MODE)
+	val = RALINK_REG(RT2880_SYS_CNTL_BASE + 0x60);
+	val |= (1 << 16); 
+	RALINK_REG(RT2880_SYS_CNTL_BASE + 0x60) = val;
+
+	// 1. Set GPIO 36 Direction to OUTPUT (Bit 4 in Bank 1)
+	val = RALINK_REG(RT2880_REG_PIODIR + 0x04);
+	val |= (1 << 4); 
+	RALINK_REG(RT2880_REG_PIODIR + 0x04) = val;
+
+	// 2. Set GPIO 36 to LOW (0) -> Clear Data Register
+	RALINK_REG(0xb0000644) = (1 << 4); 
+
+	// 3. Wait for 1 second (1,000,000 microseconds)
+	udelay(1000000); 
+
+	// 4. Set GPIO 36 to HIGH (1) -> Set Data Register
+	RALINK_REG(0xb0000634) = (1 << 4); 
+
+	// =========================================================
 
 }
 
