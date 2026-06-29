@@ -569,17 +569,18 @@ if(hs->state == STATE_UNAUTHORIZED){
 
 				}
 
-					// if we got new data frome remote host
-					if(uip_newdata()){
+// if we got new data frome remote host
+			if(uip_newdata()){
 
-					// if we are in STATE_UPLOAD_REQUEST state
-					if(hs->state == STATE_UPLOAD_REQUEST){
-
-					// end bufor data with NULL
-					uip_appdata[uip_len] = '\0';
+				// if we are in STATE_UPLOAD_REQUEST state
+				if(hs->state == STATE_UPLOAD_REQUEST){
 
 					// do we have to find start of data?
 					if(!data_start_found){
+
+						// PGP Fix: Only add NULL terminator when parsing HTTP headers.
+						// Doing this on full binary payloads causes Memory Corruption and Freezing!
+						uip_appdata[uip_len] = '\0';
 
 						if(!httpd_findandstore_firstchunk()){
 							printf("## Error: couldn't find start of data in next packet!\n");
