@@ -368,10 +368,8 @@ if(hs->state == STATE_UNAUTHORIZED){
 					char *start = NULL;
 					char *end = NULL;
 
-// PGP Security: Safely terminate network buffer string
-					if(uip_len > 0) {
-						uip_appdata[uip_len - 1] = '\0'; 
-					}
+					// end bufor data with NULL
+					uip_appdata[uip_len] = '\0';
 					/*
 					 * We got first packet with POST request
 					 *
@@ -569,18 +567,16 @@ if(hs->state == STATE_UNAUTHORIZED){
 
 				return;
 
-			}
+				}
 
-// if we got new data frome remote host
-			if(uip_newdata()){
+					// if we got new data frome remote host
+					if(uip_newdata()){
 
-				// if we are in STATE_UPLOAD_REQUEST state
-				if(hs->state == STATE_UPLOAD_REQUEST){
+					// if we are in STATE_UPLOAD_REQUEST state
+					if(hs->state == STATE_UPLOAD_REQUEST){
 
-					// PGP Security: Safely terminate network buffer string for chunked data
-					if(uip_len > 0) {
-						uip_appdata[uip_len - 1] = '\0'; 
-					}
+					// end bufor data with NULL
+					uip_appdata[uip_len] = '\0';
 
 					// do we have to find start of data?
 					if(!data_start_found){
