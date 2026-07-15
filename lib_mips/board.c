@@ -2881,27 +2881,27 @@ void gpio_init(void)
   // =========================================================
 
 	// =========================================================
-	// PGP: HARDWARE RESET VIA GPIO 36 (1s LOW -> HIGH)
+	// PGP: HARDWARE RESET VIA GPIO 17 (1s LOW -> HIGH)
 	// =========================================================
 
-	// 0. Ensure GPIO 36 (PERST_N pin) is in GPIO mode (Bit 16 in GPIO1_MODE)
+	// 0. Ensure GPIO 17 (SPIS pin) is in GPIO mode (Clear Bit 2 in GPIO1_MODE)
 	val = RALINK_REG(RT2880_SYS_CNTL_BASE + 0x60);
-	val |= (1 << 16); 
+	val &= ~(1 << 2); 
 	RALINK_REG(RT2880_SYS_CNTL_BASE + 0x60) = val;
 
-	// 1. Set GPIO 36 Direction to OUTPUT (Bit 4 in Bank 1)
-	val = RALINK_REG(RT2880_REG_PIODIR + 0x04);
-	val |= (1 << 4); 
-	RALINK_REG(RT2880_REG_PIODIR + 0x04) = val;
+	// 1. Set GPIO 17 Direction to OUTPUT (Bit 17 in Bank 0)
+	val = RALINK_REG(RT2880_REG_PIODIR);
+	val |= (1 << 17); 
+	RALINK_REG(RT2880_REG_PIODIR) = val;
 
-	// 2. Set GPIO 36 to LOW (0) -> Clear Data Register
-	RALINK_REG(0xb0000644) = (1 << 4); 
+	// 2. Set GPIO 17 to LOW (0) -> Clear Data Register (Bank 0: 0xb0000640)
+	RALINK_REG(0xb0000640) = (1 << 17); 
 
 	// 3. Wait for 1 second (1,000,000 microseconds)
 	udelay(1000000); 
 
-	// 4. Set GPIO 36 to HIGH (1) -> Set Data Register
-	RALINK_REG(0xb0000634) = (1 << 4); 
+	// 4. Set GPIO 17 to HIGH (1) -> Set Data Register (Bank 0: 0xb0000630)
+	RALINK_REG(0xb0000630) = (1 << 17); 
 
 	// =========================================================
 
@@ -3087,7 +3087,7 @@ void gpio_test( int vtest ) //Test Omega2 GPIO
 		set_gpio_led(0,0x10000000); //G28
 		set_gpio_led(0,0x20000000); //G29
 		#endif 
-		set_gpio_led(1,0x10); //G36
+		//set_gpio_led(1,0x10); //G36 REMOVED
 		set_gpio_led(1,0x20); //G37
 		set_gpio_led(1,0x40);   //G38
 		set_gpio_led(1,0x80);   //G39
