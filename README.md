@@ -165,7 +165,7 @@ For development, debugging, and boot log inspection:
 
 ```text
 Keywords: MT7628, HLK-7628N, OpenWrt, U-Boot, Bootloader, Web Recovery, Failsafe, Dual-SIM, 
-PM2208, PM2202, 74HC595, MIPS 24KEc, SPI Flash, Unbrick, Shayan Shirazi, شایان شیرازی.
+PM2208, PM2202, 74HC595, MIPS 24KEc, SPI Flash, Unbrick, Shayan Shirazi.
 ```
 
 ---
