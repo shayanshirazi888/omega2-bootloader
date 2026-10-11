@@ -134,11 +134,21 @@ void gpio_init(void);
 void led_on(void);
 void led_off(void);
 
-// [PGP] LED Shift Register Declaration
-void write_leds_595(u8 led_data);
+// =========================================================
+// [PGP] Board Driver Declarations (PM2208 vs PM2202)
+// =========================================================
+#if defined(BOARD_PM2202)
+void write_pm2202_shift(u8 led_data);
+void set_pgp_leds_pm2202(int count);
+#define SET_PGP_LEDS(count) set_pgp_leds_pm2202(count)
+#else /* BOARD_PM2208 */
+void write_pm2208_shift(u8 u3_rgb_wwan, u8 u2_rs485, u8 u5_modem_sim);
+void set_pgp_leds_pm2208(int count, int rgb_mode);
+#define SET_PGP_LEDS(count) set_pgp_leds_pm2208((count), 0)
+#endif
 
-// Added by zh@onion.io
-int detect_rst(void); // rename wps button to rst
+void write_leds_595(u8 led_data);
+int detect_rst(void);
 int detect_wifi_btn(void);
 void gpio_test(int vtest);
 void write_macAddress(void); // Added by jeffzhou@onion.io
@@ -2048,31 +2058,8 @@ void board_init_r (gd_t *id, ulong dest_addr)
     (void)i;
 
 // ----------------------------------------------------------------
-    // LED HELPER MACRO (Active Low Logic: 0 = ON, 1 = OFF)
-    // Hardware Mapping: First LED = GPIO 26, SR: Bit0=LED2, Bit4=LED3, Bit3=LED4, Bit2=LED5, Bit1=LED6
+    // [PGP] LED HELPER
     // ----------------------------------------------------------------
-    #define SET_PGP_LEDS(count) do { \
-        u8 sr = 0xFF; /* All SR LEDs OFF (11111111) */ \
-        if ((count) == 0) { \
-            RALINK_REG(0xb0000630) = (1 << 26); /* DSET0: GPIO 26 HIGH -> OFF */ \
-        } else { \
-            RALINK_REG(0xb0000640) = (1 << 26); /* DCLR0: GPIO 26 LOW -> ON (LED 1) */ \
-            if ((count) >= 2) sr &= ~0x01; /* Bit 0 -> LED 2 ON */ \
-            if ((count) >= 3) sr &= ~0x10; /* Bit 4 -> LED 3 ON */ \
-            if ((count) >= 4) sr &= ~0x08; /* Bit 3 -> LED 4 ON */ \
-            if ((count) >= 5) sr &= ~0x04; /* Bit 2 -> LED 5 ON */ \
-            if ((count) >= 6) sr &= ~0x02; /* Bit 1 -> LED 6 ON */ \
-        } \
-        write_leds_595(sr); \
-    } while(0)
-
-	
-    // Start with all LEDs OFF
-    SET_PGP_LEDS(0);
-	
-    // Ensure GPIO 26 is set as OUTPUT
-    RALINK_REG(RT2880_REG_PIODIR) |= (1 << 26);
-    
     // Start with all LEDs OFF
     SET_PGP_LEDS(0);
 
@@ -2081,10 +2068,15 @@ void board_init_r (gd_t *id, ulong dest_addr)
         if (detect_wifi_btn())
         {
             // --- SCENARIO 2: RESET + WIFI -> WEB RECOVERY ---
-            SET_PGP_LEDS(6); // Turn ON all 6 LEDs instantly
-            
+#if defined(BOARD_PM2202)
+            set_pgp_leds_pm2202(6); // Turn ON all 6 LEDs on PM2202
             printf("\n============================================\n");
-            printf("[!] PGP SYSTEM: Reset AND WiFi buttons detected!\n");
+            printf("[!] PM2202 SYSTEM: Reset AND WiFi buttons detected!\n");
+#else
+            set_pgp_leds_pm2208(8, 1); // Turn ON all 8 RS485 LEDs + Blue RGB on PM2208
+            printf("\n============================================\n");
+            printf("[!] PM2208 SYSTEM: Reset AND WiFi buttons detected!\n");
+#endif
             printf("[!] Entering Web Recovery Mode directly...\n");
             printf("============================================\n\n");
             
@@ -2104,7 +2096,11 @@ void board_init_r (gd_t *id, ulong dest_addr)
             int b; // For blinking loop
             
             printf("\n============================================\n");
-            printf("[!] PGP SYSTEM: Reset button detected!\n");
+#if defined(BOARD_PM2202)
+            printf("[!] PM2202 SYSTEM: Reset button detected!\n");
+#else
+            printf("[!] PM2208 SYSTEM: Reset button detected!\n");
+#endif
             printf("[!] Hold for 5 seconds to FACTORY RESET...\n");
             printf("============================================\n\n");
 
@@ -2115,8 +2111,12 @@ void board_init_r (gd_t *id, ulong dest_addr)
                     int sec = ms_count / 10;
                     printf("%d... ", 5 - sec);
                     
-                    // Update LEDs based on current second (1 to 6)
-                    SET_PGP_LEDS(sec + 1); 
+                    // Update LEDs based on current second
+#if defined(BOARD_PM2202)
+                    set_pgp_leds_pm2202(sec + 1);
+#else
+                    set_pgp_leds_pm2208((sec + 1) * 8 / 5, 0); 
+#endif
                 }
                 udelay(100000); // 100ms delay
                 ms_count++;
@@ -2129,8 +2129,13 @@ void board_init_r (gd_t *id, ulong dest_addr)
                 
                 // Blink ALL LEDs 5 times rapidly to confirm!
                 for (b = 0; b < 5; b++) {
-                    SET_PGP_LEDS(0); udelay(100000);
-                    SET_PGP_LEDS(6); udelay(100000);
+#if defined(BOARD_PM2202)
+                    set_pgp_leds_pm2202(0); udelay(100000);
+                    set_pgp_leds_pm2202(6); udelay(100000);
+#else
+                    set_pgp_leds_pm2208(0, 0); udelay(100000);
+                    set_pgp_leds_pm2208(8, 2); udelay(100000);
+#endif
                 }
 
                 extern int raspi_erase(unsigned int offs, int len);
@@ -2206,10 +2211,13 @@ void board_init_r (gd_t *id, ulong dest_addr)
     else
     {
         // --- SCENARIO 0: NORMAL BOOT ---
-        char *argv_normal[2];
+        char *argv_normal[3];
         printf("\nBoot Linux from Flash NO RESET PRESSED.\n");
+        argv_normal[0] = "bootm";
         sprintf(addr_str, "0x%X", CFG_KERN_ADDR);
         argv_normal[1] = &addr_str[0];
+        argv_normal[2] = NULL;
+        cmdtp = find_cmd("bootm");
         do_bootm(cmdtp, 0, 2, argv_normal);
     }
     
@@ -2223,31 +2231,131 @@ void hang (void){	puts ("### ERROR ### Please RESET the board ###\n");
 	for (;;);
 }
 
-#define PIN_CLK   (1 << 9)  // GPIO 41 (Clock)
-#define PIN_LATCH (1 << 10) // GPIO 42 (Latch / RCLK)
-#define PIN_SER   (1 << 11) // GPIO 43 (Serial Data / SER)
+// =========================================================
+// [PM2208] Cascaded 24-bit Shift Register Driver:
+// U5 (SIM & Modem Reset) -> U2 (RS485 LEDs 1-8) -> U3 (RGB & WWAN)
+#if defined(BOARD_PM2202)
+
+// =========================================================
+// [PM2202] Cascaded 16-bit Shift Register Driver:
+// CLK:   GPIO 41 (Bank 1 bit 9)
+// LATCH: GPIO 42 (Bank 1 bit 10)
+// SER:   GPIO 43 (Bank 1 bit 11)
+// =========================================================
+void write_pm2202_shift(u8 led_data)
+{
+    int i;
+    u16 total_data = ((u16)led_data << 8) | 0x00;
+
+    RALINK_REG(0xb0000644) = (1 << 10); // Latch LOW
+
+    for (i = 15; i >= 0; i--) {
+        RALINK_REG(0xb0000644) = (1 << 9); // Clock LOW
+        if (total_data & (1 << i)) {
+            RALINK_REG(0xb0000634) = (1 << 11); // SER HIGH
+        } else {
+            RALINK_REG(0xb0000644) = (1 << 11); // SER LOW
+        }
+        RALINK_REG(0xb0000634) = (1 << 9); // Clock HIGH
+    }
+
+    RALINK_REG(0xb0000634) = (1 << 10); // Latch HIGH
+}
+
+void set_pgp_leds_pm2202(int count)
+{
+    u8 sr = 0xFF; /* Active Low Logic: 0 = ON, 1 = OFF */
+    if (count == 0) {
+        RALINK_REG(0xb0000630) = (1 << 26); /* DSET0: GPIO 26 HIGH -> OFF */
+    } else {
+        RALINK_REG(0xb0000640) = (1 << 26); /* DCLR0: GPIO 26 LOW -> ON (LED 1) */
+        if (count >= 2) sr &= ~0x01; /* Bit 0 -> LED 2 ON */
+        if (count >= 3) sr &= ~0x10; /* Bit 4 -> LED 3 ON */
+        if (count >= 4) sr &= ~0x08; /* Bit 3 -> LED 4 ON */
+        if (count >= 5) sr &= ~0x04; /* Bit 2 -> LED 5 ON */
+        if (count >= 6) sr &= ~0x02; /* Bit 1 -> LED 6 ON */
+    }
+    write_pm2202_shift(sr);
+}
 
 void write_leds_595(u8 led_data)
 {
+    write_pm2202_shift(led_data);
+}
+
+#else /* BOARD_PM2208 */
+
+// =========================================================
+// [PM2208] Cascaded 24-bit Shift Register Driver:
+// U5 (SIM & Modem Reset) -> U2 (RS485 LEDs 1-8) -> U3 (RGB & WWAN)
+// CLK:   GPIO 41 (Bank 1 bit 9)
+// LATCH: GPIO 21 (Bank 0 bit 21)
+// SER:   GPIO 1  (Bank 0 bit 1)
+// =========================================================
+void write_pm2208_shift(u8 u3_rgb_wwan, u8 u2_rs485, u8 u5_modem_sim)
+{
     int i;
-    u16 total_data;
-    
-    total_data = (led_data << 8) | 0x00; 
+    u32 total_data = ((u32)u3_rgb_wwan << 16) | ((u32)u2_rs485 << 8) | ((u32)u5_modem_sim);
 
-    RALINK_REG(0xb0000644) = PIN_LATCH; 
+    // Latch LOW (GPIO 21: Bank 0 bit 21)
+    RALINK_REG(0xb0000640) = (1 << 21);
 
-    for (i = 15; i >= 0; i--) {
-        RALINK_REG(0xb0000644) = PIN_CLK;
+    for (i = 23; i >= 0; i--) {
+        // Clock LOW (GPIO 41: Bank 1 bit 9)
+        RALINK_REG(0xb0000644) = (1 << 9);
+
+        // Data bit (GPIO 1: Bank 0 bit 1)
         if (total_data & (1 << i)) {
-            RALINK_REG(0xb0000634) = PIN_SER; 
+            RALINK_REG(0xb0000630) = (1 << 1);
         } else {
-            RALINK_REG(0xb0000644) = PIN_SER; 
+            RALINK_REG(0xb0000640) = (1 << 1);
         }
-        RALINK_REG(0xb0000634) = PIN_CLK;
+
+        // Clock HIGH (GPIO 41: Bank 1 bit 9)
+        RALINK_REG(0xb0000634) = (1 << 9);
     }
 
-    RALINK_REG(0xb0000634) = PIN_LATCH;
+    // Latch HIGH (GPIO 21: Bank 0 bit 21)
+    RALINK_REG(0xb0000630) = (1 << 21);
 }
+
+void set_pgp_leds_pm2208(int count, int rgb_mode)
+{
+    u8 u2_rs485 = 0;
+    u8 u3_rgb = 0;
+    int c = count;
+
+    if (c <= 0) {
+        u2_rs485 = 0x00;
+        // Turn OFF Status LED (GPIO 39: Bank 1 bit 7)
+        RALINK_REG(0xb0000644) = (1 << 7);
+    } else {
+        if (c > 8) c = 8;
+        u2_rs485 = (1 << c) - 1; // progressive LEDs: 1 to 8
+        // Turn ON Status LED (GPIO 39: Bank 1 bit 7)
+        RALINK_REG(0xb0000634) = (1 << 7);
+    }
+
+    if (rgb_mode == 1) {
+        u3_rgb = (1 << 0); // BLUE
+    } else if (rgb_mode == 2) {
+        u3_rgb = (1 << 2); // RED
+    } else if (rgb_mode == 3) {
+        u3_rgb = (1 << 1); // GREEN
+    } else {
+        u3_rgb = 0x00;     // OFF
+    }
+
+    // Normal operation: U5 Q5 = 0 (modem out of reset)
+    write_pm2208_shift(u3_rgb, u2_rs485, 0x00);
+}
+
+void write_leds_595(u8 led_data)
+{
+    write_pm2208_shift(0x00, led_data, 0x00);
+}
+
+#endif /* BOARD_PM2208 */
 
 
 #if defined (RALINK_RW_RF_REG_FUN)
@@ -2806,148 +2914,210 @@ void disable_pcie(void)
 //WDT GPIO38 WDT_MODE 1b1
 //modified by Onion 20181128
 //GPIO43 P0_LED_AN_MODE 2b01 - GPIO (not ephy activity LED)
+#if defined(BOARD_PM2202)
+
 void gpio_init(void)
 {
 	u32 val;
-	printf( "Initializing MT7688 GPIO system.\n" );
-	//set gpio2_mode 1:0=2b01 wled,p0,p1,p2,p3,p4 as gpio
+	printf( "Initializing PM2202 MT7688 GPIO system.\n" );
+
+	// 1. GPIO2_MODE (0xb0000064): wled, p0..p4 as GPIO
 	val = 0x555;
-	RALINK_REG(RT2880_SYS_CNTL_BASE+0x64)=val; // GPIO2_MODE register
-	RALINK_REG(0xb0000644)=0x0f<<7;
-	//gpio44 output gpio_ctrl_1 bit3=1
-	val=RALINK_REG(RT2880_REG_PIODIR+0x04);
-	val|=1<<12;
-	RALINK_REG(RT2880_REG_PIODIR+0x04)=val;
-	//set gpio1_mode 14=1b1
-	val=RALINK_REG(RT2880_SYS_CNTL_BASE+0x60);
-	val|=1<<14;
-	RALINK_REG(RT2880_SYS_CNTL_BASE+0x60)=val;
-	//gpio38 input gpio_ctrl_1 bit5=0
-	val=RALINK_REG(RT2880_REG_PIODIR+0x04);
-	val&=~1<<6;
+	RALINK_REG(RT2880_SYS_CNTL_BASE + 0x64) = val;
 
-	RALINK_REG(RT2880_REG_PIODIR+0x04)=val;
-
-
-  // Set SD_MODE to GPIO mode (01 is the real GPIO mode in MT7688)
-    val = RALINK_REG(RT2880_SYS_CNTL_BASE+0x60);
-    val &= ~(3<<10); // Clear bits 11:10
-    val |= (1<<10);  // Set bits 11:10 to 01 (GPIO mode)
-    RALINK_REG(RT2880_SYS_CNTL_BASE+0x60) = val;
-	
-  // Set GPIO 25 and GPIO 29 direction as INPUT
-    val = RALINK_REG(RT2880_REG_PIODIR);
-    val &= ~((1<<25) | (1<<29)); 
-    RALINK_REG(RT2880_REG_PIODIR) = val;
-
-  //zh@onion.io
-  //setting GPIO 11 High, required for the reset button to work
-  val=RALINK_REG(RT2880_REG_PIODIR);
-  val|=1<<11;
-  RALINK_REG(RT2880_REG_PIODIR) = val; // GPIO 11 direction output
-  val=RALINK_REG(RT2880_REG_PIODATA);
-  val|=1<<11;
-  RALINK_REG(RT2880_REG_PIODATA) = val; // GPIO 11 High
-
-  //jeffzhou@onion.io
-  //adding for read wifi MAC address.
-  unsigned char macbuf[6];
-	raspi_read(macbuf, CFG_FACTORY_ADDR - CFG_FLASH_BASE + 0x04, 6);
-	printf("wifi mac address = %02X%02X%02X%02X%02X%02X.\n",
-      macbuf[0],macbuf[1],macbuf[2],macbuf[3],macbuf[4],macbuf[5]);
-
-  // =========================================================
-  // [PGP] CONVERT ANALOG EPHY P4 TO DIGITAL GPIO 26
-  // =========================================================
-  val = RALINK_REG(RT2880_SYS_CNTL_BASE + 0x3C); // AGPIO_CFG Register
-  val |= (1 << 20); // Set bit 20 to disable EPHY Port 4 and enable Digital GPIO 26
-  RALINK_REG(RT2880_SYS_CNTL_BASE + 0x3C) = val;
-
-  // Set GPIO 26 Direction to OUTPUT
-  val = RALINK_REG(RT2880_REG_PIODIR);
-  val |= (1 << 26);
-  RALINK_REG(RT2880_REG_PIODIR) = val;
-
-  // Turn OFF GPIO 26 initially (DSET0 sets it HIGH -> LED OFF)
-  RALINK_REG(0xb0000630) = (1 << 26);
-
-  // Set Shift Register Pins (40, 41, 42, 43) to OUTPUT
-  val = RALINK_REG(RT2880_REG_PIODIR + 0x04);
-  val |= (0x0F << 8); 
-  RALINK_REG(RT2880_REG_PIODIR + 0x04) = val;
-
-  // Power UP Shift Register (SRCLR = High)
-  RALINK_REG(0xb0000634) = (1 << 8); 
-  // =========================================================
-
-	// =========================================================
-	// PGP: HARDWARE RESET VIA GPIO 17 (1s LOW -> HIGH)
-	// =========================================================
-
-	// 0. Ensure GPIO 17 (SPIS pin) is in GPIO mode (Clear Bit 2 in GPIO1_MODE)
+	// 2. GPIO1_MODE (0xb0000060):
+	//    - Bit 16 (PCIE_RST_MODE): 1 = GPIO36 for Modem Reset
+	//    - Bits 11:10 (SD_MODE): 01 = GPIO mode for GPIO 25 & 29 (Buttons)
 	val = RALINK_REG(RT2880_SYS_CNTL_BASE + 0x60);
-	val &= ~(1 << 2); 
+	val |= (1 << 16);
+	val &= ~(3 << 10);
+	val |= (1 << 10);
 	RALINK_REG(RT2880_SYS_CNTL_BASE + 0x60) = val;
 
-	// 1. Set GPIO 17 Direction to OUTPUT (Bit 17 in Bank 0)
+	// 3. AGPIO_CFG (0xb000003c): Bit 20 = 1 (Port 4 digital GPIO 26)
+	val = RALINK_REG(RT2880_SYS_CNTL_BASE + 0x3C);
+	val |= (1 << 20);
+	RALINK_REG(RT2880_SYS_CNTL_BASE + 0x3C) = val;
+
+	// 4. Bank 0 Direction: GPIO 26 Output, GPIO 25 & 29 Inputs
 	val = RALINK_REG(RT2880_REG_PIODIR);
-	val |= (1 << 17); 
+	val |= (1 << 26);
+	val &= ~((1 << 25) | (1 << 29));
 	RALINK_REG(RT2880_REG_PIODIR) = val;
 
-	// 2. Set GPIO 17 to LOW (0) -> Clear Data Register (Bank 0: 0xb0000640)
-	RALINK_REG(0xb0000640) = (1 << 17); 
+	// Turn OFF GPIO 26 initially
+	RALINK_REG(0xb0000630) = (1 << 26);
 
-	// 3. Wait for 1 second (1,000,000 microseconds)
-	udelay(1000000); 
+	// 5. Bank 1 Direction:
+	//    - GPIO 36 Output (Modem Reset: bit 4)
+	//    - GPIO 40..43 Outputs (Shift Register: bits 8..11)
+	//    - GPIO 44 Output (WLAN LED: bit 12)
+	val = RALINK_REG(RT2880_REG_PIODIR + 0x04);
+	val |= (1 << 4) | (0x0F << 8) | (1 << 12);
+	RALINK_REG(RT2880_REG_PIODIR + 0x04) = val;
 
-	// 4. Set GPIO 17 to HIGH (1) -> Set Data Register (Bank 0: 0xb0000630)
-	RALINK_REG(0xb0000630) = (1 << 17); 
+	// Power UP Shift Register (SRCLR = High: GPIO 40)
+	RALINK_REG(0xb0000634) = (1 << 8);
 
-	// =========================================================
+	// Read wifi MAC address from factory block
+	unsigned char macbuf[6];
+	raspi_read(macbuf, CFG_FACTORY_ADDR - CFG_FLASH_BASE + 0x04, 6);
+	printf("wifi mac address = %02X%02X%02X%02X%02X%02X.\n",
+	      macbuf[0],macbuf[1],macbuf[2],macbuf[3],macbuf[4],macbuf[5]);
 
+	// PM2202: 1s Hardware Reset Pulse on GPIO 36 (LOW -> HIGH)
+	printf("PM2202: Resetting Quectel modem via GPIO 36 (1s pulse)...\n");
+	RALINK_REG(0xb0000644) = (1 << 4); // Low
+	udelay(1000000);                   // 1 second
+	RALINK_REG(0xb0000634) = (1 << 4); // High (Normal operation)
 }
 
 void led_on( void )
 {
-	//gpio44 gpio_dclr_1 644 clear bit12
-	RALINK_REG(0xb0000644)=1<<12;
+	RALINK_REG(0xb0000644) = (1 << 12); // WLAN_LED ON
 }
 
 void led_off( void )
 {
-	//gpio44 gpio_dset_1 634 set bit12
-	RALINK_REG(0xb0000634)=1<<12;
+	RALINK_REG(0xb0000634) = (1 << 12); // WLAN_LED OFF
+}
+
+int detect_rst( void )
+{
+	u32 val = RALINK_REG(0xb0000620); // Bank 0
+	if ( ! (val & (1 << 25)) )        // GPIO 25 Active-low
+		return 1;
+	else
+		return 0;
+}
+
+int detect_wifi_btn( void )
+{
+	u32 val = RALINK_REG(0xb0000620); // Bank 0
+	if ( (val & (1 << 29)) == 0 )     // GPIO 29 Active-low
+		return 1;
+	else
+		return 0;
+}
+
+#else /* BOARD_PM2208 */
+
+void gpio_init(void)
+{
+	u32 val;
+	printf( "Initializing PM2208 MT7688 GPIO system.\n" );
+
+	// 1. Configure GPIO1_MODE (0xb0000060):
+	//    - Bit 16 (PCIE_RST_MODE): 1 = GPIO36 mode (RST_FACTORY)
+	//    - Bits 7:6 (I2S_MODE): 01 = GPIO mode (GPIO 1 for SimShift_SER)
+	val = RALINK_REG(RT2880_SYS_CNTL_BASE + 0x60);
+	val |= (1 << 16);    // PCIE_RST to GPIO36 (RST_FACTORY)
+	val &= ~(3 << 6);    // Clear I2S_MODE
+	val |= (1 << 6);     // Set I2S_MODE to 01 (GPIO mode for GPIO 1)
+	RALINK_REG(RT2880_SYS_CNTL_BASE + 0x60) = val;
+
+	// 2. Configure GPIO2_MODE (0xb0000064):
+	//    - Bits 1:0 (WLED_AN_MODE): 01 = GPIO mode (GPIO 44: WLAN_LED)
+	//    - Bits 3:2 (P0_LED_AN_MODE): 01 = GPIO mode (GPIO 43: ETH0_LED)
+	//    - Bits 5:4 (P1_LED_AN_MODE): 01 = GPIO mode (GPIO 42: WIFI_KEY)
+	//    - Bits 7:6 (P2_LED_AN_MODE): 01 = GPIO mode (GPIO 41: SimShift_CLK)
+	//    - Bits 11:10 (P4_LED_AN_MODE): 01 = GPIO mode (GPIO 39: STATUS_LED)
+	val = 0x555;
+	RALINK_REG(RT2880_SYS_CNTL_BASE + 0x64) = val;
+
+	// 3. Configure AGPIO_CFG (0xb000003c):
+	//    - Bit 18: Disable EPHY Port 2 and enable digital GPIO 21 (SimShift_latch)
+	val = RALINK_REG(RT2880_SYS_CNTL_BASE + 0x3C);
+	val |= (1 << 18);
+	RALINK_REG(RT2880_SYS_CNTL_BASE + 0x3C) = val;
+
+	// 4. Bank 0 Direction (0xb0000600):
+	//    - GPIO 1 (SimShift_SER): OUTPUT (bit 1)
+	//    - GPIO 21 (SimShift_latch): OUTPUT (bit 21)
+	val = RALINK_REG(RT2880_REG_PIODIR);
+	val |= (1 << 1) | (1 << 21);
+	RALINK_REG(RT2880_REG_PIODIR) = val;
+
+	// 5. Bank 1 Direction (0xb0000604):
+	//    - GPIO 36 (RST_FACTORY): INPUT (bit 4 = 0)
+	//    - GPIO 39 (STATUS_LED): OUTPUT (bit 7 = 1)
+	//    - GPIO 41 (SimShift_CLK): OUTPUT (bit 9 = 1)
+	//    - GPIO 42 (WIFI_KEY): INPUT (bit 10 = 0)
+	//    - GPIO 43 (ETH0_LED): OUTPUT (bit 11 = 1)
+	//    - GPIO 44 (WLAN_LED): OUTPUT (bit 12 = 1)
+	val = RALINK_REG(RT2880_REG_PIODIR + 0x04);
+	val &= ~((1 << 4) | (1 << 10)); // Inputs: GPIO 36, GPIO 42
+	val |= (1 << 7) | (1 << 9) | (1 << 11) | (1 << 12); // Outputs
+	RALINK_REG(RT2880_REG_PIODIR + 0x04) = val;
+
+	// Turn OFF direct LEDs initially
+	RALINK_REG(0xb0000644) = (1 << 7);  // STATUS_LED OFF (Low = OFF)
+	RALINK_REG(0xb0000634) = (1 << 12); // WLAN_LED OFF (High = OFF, active low)
+	RALINK_REG(0xb0000634) = (1 << 11); // ETH0_LED OFF
+
+	// Read wifi MAC address from factory block
+	unsigned char macbuf[6];
+	raspi_read(macbuf, CFG_FACTORY_ADDR - CFG_FLASH_BASE + 0x04, 6);
+	printf("wifi mac address = %02X%02X%02X%02X%02X%02X.\n",
+	      macbuf[0],macbuf[1],macbuf[2],macbuf[3],macbuf[4],macbuf[5]);
+
+	// =========================================================
+	// PM2208: Modem Hardware Reset via Shift Register U5 Q5 (SIM_RST)
+	// =========================================================
+	// Assert Reset: U5 Q5 = 1 (0x20) -> turns on Q2 -> pulls GSM1_PERST to GND
+	printf("PM2208: Resetting Quectel modem via shift register U5 Q5 (1s pulse)...\n");
+	write_pm2208_shift(0x00, 0x00, 0x20);
+	udelay(1000000); // 1 second reset pulse
+
+	// Release Reset: U5 Q5 = 0 (0x00) -> turns off Q2 -> GSM1_PERST pulled HIGH
+	write_pm2208_shift(0x00, 0x00, 0x00);
+}
+
+void led_on( void )
+{
+	// STATUS_LED ON (GPIO 39: Bank 1 bit 7 High) & WLAN_LED ON (GPIO 44: Bank 1 bit 12 Low)
+	RALINK_REG(0xb0000634) = (1 << 7);
+	RALINK_REG(0xb0000644) = (1 << 12);
+}
+
+void led_off( void )
+{
+	// STATUS_LED OFF (GPIO 39: Bank 1 bit 7 Low) & WLAN_LED OFF (GPIO 44: Bank 1 bit 12 High)
+	RALINK_REG(0xb0000644) = (1 << 7);
+	RALINK_REG(0xb0000634) = (1 << 12);
 }
 
 int detect_rst( void )
 {
 	u32 val;
-	val = RALINK_REG(0xb0000620); // Read GPIO 0 to 31 (since GPIO 25 is in the first register)
+	val = RALINK_REG(0xb0000624); // Bank 1
 
-    if ( ! (val & (1 << 25)) ) // Active-low logic: returns 1 if GPIO 25 is pressed (GND)
-    {
-    	return 1;
-    }
-    else
-    {
-        return 0;
-    }
+	if ( ! (val & (1 << 4)) ) // Active-low logic: returns 1 if GPIO 36 is pressed (GND)
+	{
+		return 1;
+	}
+	else
+	{
+		return 0;
+	}
 }
 
 int detect_wifi_btn( void )
 {
 	u32 val;
-	val = RALINK_REG(0xb0000620); // Read GPIO 0 to 31 
+	val = RALINK_REG(0xb0000624); // Bank 1
 
-    if ( (val & (1 << 29)) == 0 )
-    {
-    	return 1;
-    }
-    else
-    {
-        return 0;
-    }
+	if ( ! (val & (1 << 10)) ) // Active-low logic: returns 1 if GPIO 42 is pressed (GND)
+	{
+		return 1;
+	}
+	else
+	{
+		return 0;
+	}
 }
+
+#endif /* BOARD_PM2208 */
 void set_gpio_led(int vreg,int vgpio)  //jeff add for gpio test at 20190125
 {
 	if(vreg == 0)

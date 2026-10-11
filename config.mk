@@ -765,6 +765,9 @@ CFG_ENV_IS := IN_FLASH
 endif
 endif
 CPPFLAGS += -DCFG_ENV_IS_$(CFG_ENV_IS)
+ifdef EXTRA_CPPFLAGS
+CPPFLAGS += $(EXTRA_CPPFLAGS)
+endif
 
 ifdef BUILD_TAG
 CFLAGS := $(CPPFLAGS) -Wall -Wstrict-prototypes \

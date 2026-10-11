@@ -102,6 +102,15 @@ extern unsigned int  CFG_BLOCKSIZE;
 /* valid baudrates */
 #define CFG_BAUDRATE_TABLE	{ 9600, 19200, 38400, 57600, 115200 }
 
+/*
+ * PGP Target Board Selection:
+ *   #define BOARD_PM2208 1 (Default: PM2208 V2.0)
+ *   #define BOARD_PM2202 1 (PM2202)
+ */
+#if !defined(BOARD_PM2202) && !defined(BOARD_PM2208)
+#define BOARD_PM2208 1
+#endif
+
 //#define	CONFIG_TIMESTAMP		/* Print image info with timestamp */
 
 #undef	CONFIG_BOOTARGS

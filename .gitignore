@@ -4,3 +4,5 @@
 *.map
 *.bin
 *.srec
+bin/
+u-boot

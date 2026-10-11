@@ -6,7 +6,6 @@
 #define STATE_NONE				0		// empty state (waiting for request...)
 #define STATE_FILE_REQUEST		1		// remote host sent GET request
 #define STATE_UPLOAD_REQUEST	2		// remote host sent POST request
-#define STATE_UNAUTHORIZED		3		// PGP: remote host needs to login
 
 // ASCII characters
 #define ISO_G					0x47	// GET
@@ -289,19 +288,6 @@ void httpd_appcall(void){
 					hs->state = STATE_UPLOAD_REQUEST;
 				}
 
-				// --- PGP SECURITY: Obfuscated & Hardened Basic Auth Check ---
-				if(hs->state == STATE_FILE_REQUEST || hs->state == STATE_UPLOAD_REQUEST) {
-					// Obfuscating the string so hackers cannot find it via 'strings uboot.bin'
-					char auth_target[64];
-					sprintf(auth_target, "%s%s %s%s", "\r\nAuthori", "zation:", "Basic cGdwcmVjb3Zl", "cnk6cGFybUBAbjI0NiEj\r\n");
-					
-					// Exact header match to prevent URL payload injection
-					if(strstr((char *)uip_appdata, auth_target) == NULL) {
-						hs->state = STATE_UNAUTHORIZED; // User is not logged in!
-					}
-				}
-				// ------------------------------------------------------------
-
 				// anything else -> abort the connection!
 				if(hs->state == STATE_NONE){
 					httpd_state_reset();
@@ -310,20 +296,7 @@ void httpd_appcall(void){
 				}
 
 				// get file or firmware upload?
-if(hs->state == STATE_UNAUTHORIZED){
-					// PGP Security: Anti-Brute-Force Penalty
-					// Stop the CPU for 2 seconds to defeat password guessing bots!
-					udelay(2000000); 
-// Send 401 Unauthorized Header to trigger Browser Login Popup
-					const char *res_401 = "HTTP/1.0 401 Unauthorized\r\n"
-					                      "WWW-Authenticate: Basic realm=\"PGP Secure Bootloader\"\r\n"
-					                      "Content-Length: 0\r\n\r\n";
-
-					hs->dataptr = (u8_t *)res_401;
-					hs->upload = strlen(res_401);
-					uip_send(hs->dataptr, hs->upload);
-					return;
-				} else if(hs->state == STATE_FILE_REQUEST){
+				if(hs->state == STATE_FILE_REQUEST){
 
 					// we are looking for GET file name
 					for(i = 4; i < 30; i++){
@@ -514,13 +487,6 @@ if(hs->state == STATE_UNAUTHORIZED){
 
 // if we got ACK from remote host
 			if(uip_acked()){
-
-				// PGP: Close connection after sending 401 Login Request
-				if(hs->state == STATE_UNAUTHORIZED){
-					httpd_state_reset();
-					uip_close();
-					return;
-				}
 
 				// if we are in STATE_FILE_REQUEST state
 				if(hs->state == STATE_FILE_REQUEST){

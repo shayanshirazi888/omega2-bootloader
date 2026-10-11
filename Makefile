@@ -227,7 +227,47 @@ ifeq ($(MT7621_MP), y)
 ALL += uboot_a.bin
 endif
 
-all:		clean $(ALL)
+OUTPUT_DIR ?= bin
+
+.NOTPARALLEL: all both pm2208 pm2202
+
+all:		both
+
+pm2208:
+		@echo ""
+		@echo ">>> [1/2] Building PM2208 Bootloader..."
+		@echo ""
+		$(MAKE) clean
+		$(MAKE) EXTRA_CPPFLAGS="-DBOARD_PM2208=1" $(ALL)
+		@mkdir -p $(OUTPUT_DIR)
+		cp -f uboot.bin $(OUTPUT_DIR)/uboot_pm2208.bin
+		@if [ -f uboot.img ]; then cp -f uboot.img $(OUTPUT_DIR)/uboot_pm2208.img; fi
+		@rm -f uboot.bin uboot.img u-boot u-boot.map u-boot.srec u-boot.hex System.map uboot_pm2208.bin uboot_pm2202.bin
+		@echo ">>> PM2208 Built: $(OUTPUT_DIR)/uboot_pm2208.bin"
+
+pm2202:
+		@echo ""
+		@echo ">>> [2/2] Building PM2202 Bootloader..."
+		@echo ""
+		$(MAKE) clean
+		$(MAKE) EXTRA_CPPFLAGS="-DBOARD_PM2202=1" $(ALL)
+		@mkdir -p $(OUTPUT_DIR)
+		cp -f uboot.bin $(OUTPUT_DIR)/uboot_pm2202.bin
+		@if [ -f uboot.img ]; then cp -f uboot.img $(OUTPUT_DIR)/uboot_pm2202.img; fi
+		@rm -f uboot.bin uboot.img u-boot u-boot.map u-boot.srec u-boot.hex System.map uboot_pm2208.bin uboot_pm2202.bin
+		@echo ">>> PM2202 Built: $(OUTPUT_DIR)/uboot_pm2202.bin"
+
+both:		pm2208 pm2202
+		@mkdir -p $(OUTPUT_DIR)
+		cp -f $(OUTPUT_DIR)/uboot_pm2208.bin $(OUTPUT_DIR)/uboot.bin
+		@if [ -f $(OUTPUT_DIR)/uboot_pm2208.img ]; then cp -f $(OUTPUT_DIR)/uboot_pm2208.img $(OUTPUT_DIR)/uboot.img; fi
+		@rm -f uboot.bin uboot.img u-boot u-boot.map u-boot.srec u-boot.hex System.map uboot_pm2208.bin uboot_pm2202.bin
+		@echo ""
+		@echo "=========================================================="
+		@echo " [SUCCESS] Both bootloaders built successfully in $(OUTPUT_DIR)/!"
+		@echo "   1) PM2208 -> $(OUTPUT_DIR)/uboot_pm2208.bin (and $(OUTPUT_DIR)/uboot.bin)"
+		@echo "   2) PM2202 -> $(OUTPUT_DIR)/uboot_pm2202.bin"
+		@echo "=========================================================="
 
 u-boot.hex:	u-boot
 		$(OBJCOPY) ${OBJCFLAGS} -O ihex $< $@
@@ -1817,6 +1857,7 @@ clobber:	clean
 	rm -f $(OBJS) *.bak tags TAGS
 	rm -fr *.*~
 	rm -f u-boot u-boot.map u-boot.hex $(ALL)
+	rm -rf $(OUTPUT_DIR)
 
 mrproper \
 distclean:	clobber unconfig
